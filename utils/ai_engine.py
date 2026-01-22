@@ -1,0 +1,819 @@
+# /home/ulyashka_88/molecule-mentor/ai_engine.py
+from __future__ import annotations
+
+import json
+import os
+import re
+import socket
+import threading
+import time
+from dataclasses import dataclass
+from typing import Optional, Tuple, Dict, Any
+from urllib.parse import quote
+
+import requests
+
+
+@dataclass
+class Diagnose:
+    hf_token_exists: bool
+    hf_token_len: int
+    online_reachable: bool
+    online_last_error: str
+    offline_model_exists: bool
+    llama_import_ok: bool
+    llama_last_error: str
+    mode: str  # "ONLINE" | "OFFLINE" | "N/A"
+    last_switch_ts: float
+
+
+class AIEngine:
+    """
+    Dual-mode AI:
+      - Online: HuggingFace Router /v1/chat/completions
+      - Offline: llama_cpp create_chat_completion
+
+    ВАЖНО: ask() синхронный — вызывать ТОЛЬКО из фонового потока.
+    """
+
+    def __init__(self, hf_token_path: str, offline_model_path: str):
+        self.hf_token_path = hf_token_path
+        self.offline_model_path = offline_model_path
+
+        self._lock = threading.RLock()
+        self._http = requests.Session()
+        self._mode = "N/A"
+        self._last_switch = 0.0
+
+        self._hf_token: Optional[str] = None
+        self._llama = None
+        self._llama_err = ""
+        self._online_err = ""
+        self._online_ok = False
+
+        # In-memory cache для retrieval (без файлов)
+        self._retrieval_cache: Dict[str, Tuple[float, str, list[str]]] = {}
+        self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))  # 24ч
+
+        self._stop = False
+        self._health_thread = threading.Thread(target=self._health_loop, daemon=True)
+        self._health_thread.start()
+
+    # -------- public API --------
+    def stop(self) -> None:
+        self._stop = True
+
+    def mode(self) -> str:
+        with self._lock:
+            return self._mode
+
+    def set_offline_model_path(self, path: str) -> None:
+        """
+        Можно вызвать после того как модель будет подготовлена/склеена.
+        Сбрасываем кэш Llama, чтобы при следующем запросе модель загрузилась с нового пути.
+        """
+        with self._lock:
+            self.offline_model_path = path
+            self._llama = None
+            self._llama_err = ""
+
+    def diagnose(self) -> Diagnose:
+        token = self._read_token()
+        hf_exists = bool(token)
+        offline_exists = os.path.exists(self.offline_model_path) and os.path.getsize(self.offline_model_path) > 0
+        llama_ok = self._try_import_llama()
+
+        with self._lock:
+            mode = self._mode
+            online_ok = self._online_ok
+            online_err = self._online_err
+            llama_err = self._llama_err
+            last_switch = self._last_switch
+
+        return Diagnose(
+            hf_token_exists=hf_exists,
+            hf_token_len=len(token) if token else 0,
+            online_reachable=online_ok,
+            online_last_error=online_err or "",
+            offline_model_exists=offline_exists,
+            llama_import_ok=llama_ok,
+            llama_last_error=llama_err or "",
+            mode=mode,
+            last_switch_ts=last_switch,
+        )
+
+    # -------- language control --------
+    _RE_LATIN_ANY = re.compile(r"[A-Za-z]")
+    _RE_FORMULA_TOKEN = re.compile(r"^(?:[A-Z][a-z]?\d*){1,12}[+-]?$")
+
+    # Разрешим органическую запись типа R-COOH, R'-OH, R-COO-R' (иначе будет считаться “английским”)
+    _RE_ORGANIC_TOKEN = re.compile(r"^(?:R|R'|R’)(?:[A-Za-z0-9'’+\-()]{0,32})$")
+
+    # Принудительная замена “упрямых” английских слов на русские
+    FORCED_RU_TERMS = {
+        "and/or": "и/или",
+        "and": "и",
+        "or": "или",
+        "dissolveable": "растворимый",
+        "dissolvable": "растворимый",
+        "miscible": "смешивающихся",
+        "immiscible": "несмешивающихся",
+        "texture": "структура",
+        "solvent": "растворитель",
+        "compound": "соединение",
+        "substance": "вещество",
+        "properties": "свойства",
+        "mixture": "смесь",
+        "solution": "раствор",
+        "aqueous": "водный",
+        "ionic": "ионный",
+    }
+
+    # -------- prompts --------
+    def _system_prompt_ru(self, is_offline: bool = False) -> str:
+        base = (
+            "Ты — эксперт по химии для школьников 7–11 классов.\n"
+            "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.\n"
+            "Запрещено использовать английские слова, кроме химических формул.\n"
+            
+            "КРИТИЧЕСКИ ПРАВИЛА:\n"
+            "1) Пиши только факты из школьного курса химии.\n"
+            "2) Если не уверен в ответе — напиши «Я не знаю точного ответа».\n"
+            "3) Никогда не выдумывай данные.\n"
+            "4) Латинские буквы ТОЛЬКО в формулах: H2O, CO2, NaOH, CH3OH, C2H5OH, R-COOH.\n"
+            "5) Символы: →, <->, +, -, =, цифры — разрешены в формулах.\n"
+            "6) Не используй спецсимволы Unicode (↑, ↓, ∞, ± и т.д.) — замени их текстом.\n"
+            
+            "СТРУКТУРА ОТВЕТА:\n"
+            "1) Определение (что это).\n"
+            "2) Формула (если есть).\n"
+            "3) Примеры (3-6 штук).\n"
+            "4) Свойства и применение.\n"
+            
+            "ВАЖНО: ответ должен быть чистым русским текстом без ошибок и странных символов.\n"
+        )
+        
+        if is_offline:
+            base += (
+                "\nТы работаешь в оффлайн-режиме. Дай максимально подробный ответ "
+                "по тем знаниям, которые у тебя есть. Не пиши «я в оффлайн-режиме».\n"
+            )
+        
+        return base
+
+    def _verifier_prompt_ru(self) -> str:
+        return (
+            "Ты — строгий научный редактор по школьной химии.\n"
+            "Проверь текст на фактические и терминологические ошибки.\n"
+            "Если есть ошибки — исправь.\n"
+            "Если уверенно исправить нельзя — скажи, каких данных не хватает.\n"
+            "Не добавляй новых неподтверждённых фактов.\n"
+            "Отвечай только финальным исправленным текстом.\n"
+            "Русский язык обязателен, латиница — только в формулах (и R-обозначениях органики).\n"
+        )
+
+    # -------- retrieval (internet facts) --------
+    def _is_chem_query(self, text: str) -> bool:
+        """
+        Широкий фильтр: если похоже на учебный химический вопрос — включаем retrieval (в ONLINE).
+        """
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        triggers = (
+            "что такое", "что значит", "определи", "дай определение",
+            "расскажи", "объясни",
+            "перечисли", "назови", "приведи примеры",
+            "формула", "общая формула", "структурная формула", "как писать структурные",
+            "свойства", "растворимость", "температура кипения", "температура плавления",
+            "реакция", "уравнение", "окисление", "восстановление", "этерификация", "гидролиз",
+            "класс веществ", "к какому классу",
+            "спирты", "альдегиды", "кетоны", "кислоты", "основания", "соли", "углеводы",
+        )
+        return any(x in t for x in triggers)
+
+    def _extract_term_ru(self, text: str) -> str:
+        """
+        Извлекаем "термин" для поиска источников.
+        Для "перечисли спирты" -> "спирты"
+        Для "как писать структурные формулы" -> "структурная формула" / "структурные формулы"
+        """
+        t = (text or "").strip().lower()
+        t = re.sub(r"[^\w\s\-ёЁа-яА-Я]", " ", t)
+        t = re.sub(r"\s{2,}", " ", t).strip()
+
+        if not t:
+            return ""
+
+        # убираем частые служебные слова/глаголы
+        stop_prefixes = (
+            "объясни", "расскажи", "что такое", "что значит", "дай определение", "определи",
+            "перечисли", "назови", "приведи", "покажи", "как", "почему", "зачем",
+            "подробно", "кратко",
+        )
+        for sp in stop_prefixes:
+            if t.startswith(sp + " "):
+                t = t[len(sp):].strip()
+
+        # вычищаем стоп-слова внутри
+        stop_words = {
+            "пожалуйста", "мне", "про", "о", "об", "это", "такое", "значит",
+            "на", "в", "и", "или", "что", "как", "какие", "какой", "в", "для",
+            "класс", "курсе", "школьной", "школа", "уроке", "учебный",
+        }
+        parts = [p for p in t.split() if p and p not in stop_words]
+        if not parts:
+            return ""
+
+        # берём последние 1–2 слова — чаще всего там и термин ("перечисли спирты" -> "спирты")
+        tail = parts[-2:] if len(parts) > 1 else parts[-1:]
+        return " ".join(tail).strip()
+
+    def _http_get_json(self, url: str, timeout_sec: float) -> Optional[Dict[str, Any]]:
+        try:
+            r = self._http.get(url, timeout=timeout_sec, headers={"User-Agent": "MoleculeMentor/1.0"})
+            if r.status_code != 200:
+                return None
+            return r.json()
+        except Exception:
+            return None
+
+    def _fetch_wikipedia_ru_summary(self, term: str, timeout_sec: float = 6.0) -> Tuple[str, str]:
+        """
+        ru.wikipedia REST summary: (title, extract)
+        """
+        if not term:
+            return "", ""
+        url = f"https://ru.wikipedia.org/api/rest_v1/page/summary/{quote(term)}"
+        data = self._http_get_json(url, timeout_sec)
+        if not data:
+            return "", ""
+        title = (data.get("title") or "").strip()
+        extract = (data.get("extract") or "").strip()
+        return title, extract
+
+    def _fetch_pubchem_basic(self, term: str, timeout_sec: float = 7.0) -> Dict[str, str]:
+        """
+        PubChem PUG REST: формула и IUPAC name (для веществ).
+        Если термин не вещество — просто вернёт пустые поля.
+        """
+        if not term:
+            return {"formula": "", "iupac": ""}
+
+        url = (
+            "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
+            f"{quote(term)}/property/MolecularFormula,IUPACName/JSON"
+        )
+        data = self._http_get_json(url, timeout_sec)
+        if not data:
+            return {"formula": "", "iupac": ""}
+
+        props = data.get("PropertyTable", {}).get("Properties", [])
+        if not props:
+            return {"formula": "", "iupac": ""}
+
+        first = props[0] or {}
+        return {
+            "formula": (first.get("MolecularFormula") or "").strip(),
+            "iupac": (first.get("IUPACName") or "").strip(),
+        }
+
+    def _build_retrieved_context_ru(self, term: str) -> Tuple[str, list[str]]:
+        """
+        Возвращает (context_text, sources_list).
+        context_text — короткая выжимка фактов.
+        """
+        if not term:
+            return "", []
+
+        key = term.lower().strip()
+        now = time.time()
+        cached = self._retrieval_cache.get(key)
+        if cached:
+            ts, ctx, src = cached
+            if now - ts < self._retrieval_cache_ttl_sec:
+                return ctx, list(src)
+
+        sources: list[str] = []
+        chunks: list[str] = []
+
+        title, extract = self._fetch_wikipedia_ru_summary(term)
+        if extract:
+            sources.append("Wikipedia (ru)")
+            chunks.append(f"[Wikipedia] {extract}")
+
+        pub = self._fetch_pubchem_basic(term)
+        if pub.get("formula") or pub.get("iupac"):
+            sources.append("PubChem")
+            line = "[PubChem]"
+            if pub.get("formula"):
+                line += f" Формула: {pub['formula']}."
+            if pub.get("iupac"):
+                line += f" IUPAC: {pub['iupac']}."
+            chunks.append(line)
+
+        ctx = "\n".join(chunks).strip()
+        self._retrieval_cache[key] = (now, ctx, sources)
+        return ctx, sources
+
+    # -------- text normalization for Kivy fonts --------
+    _SUBSCRIPT_MAP = str.maketrans({
+        "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+        "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+    })
+    _SUPERSCRIPT_MAP = str.maketrans({
+        "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+        "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+        "⁺": "+", "⁻": "-", "⁼": "=", "⁽": "(", "⁾": ")",
+    })
+
+    def _normalize_for_kivy_font(self, text: str) -> str:
+        """
+        Убираем/заменяем символы, которые часто рендерятся квадратиками в Kivy.
+        """
+        if not text:
+            return ""
+
+        # стрелки/мат.символы -> ascii
+        replacements = {
+            "⇌": "<->",
+            "↔": "<->",
+            "⟷": "<->",
+            "→": "->",
+            "⇒": "->",
+            "←": "<-",
+            "≤": "<=",
+            "≥": ">=",
+            "×": "x",
+            "·": "*",
+            "•": "*",
+            "—": "-",
+            "–": "-",
+            "−": "-",
+            "“": '"',
+            "”": '"',
+            "„": '"',
+            "«": '"',
+            "»": '"',
+            "’": "'",
+            "‘": "'",
+            "…": "...",
+        }
+        for a, b in replacements.items():
+            text = text.replace(a, b)
+
+        # индексы в формулах -> обычные цифры (H₂O -> H2O), степени тоже
+        text = text.translate(self._SUBSCRIPT_MAP)
+        text = text.translate(self._SUPERSCRIPT_MAP)
+
+        return text
+
+    # -------- postprocessing --------
+    def _needs_russian_rewrite(self, answer: str) -> bool:
+        """
+        True если в ответе есть латиница НЕ как химическая формула/органическая запись.
+        """
+        if not answer:
+            return False
+
+        if not self._RE_LATIN_ANY.search(answer):
+            return False
+
+        for raw in answer.split():
+            tok = raw.strip(" \t\r\n.,;:!?()[]{}<>\"'“”«»—–-_/\\|")
+            if not tok:
+                continue
+
+            if not self._RE_LATIN_ANY.search(tok):
+                continue
+
+            # разрешаем чистые формулы типа NaOH, H2O
+            if self._RE_FORMULA_TOKEN.fullmatch(tok):
+                continue
+
+            # разрешаем органические R-обозначения (R-COOH и т.п.)
+            if self._RE_ORGANIC_TOKEN.fullmatch(tok):
+                continue
+
+            # разрешаем отдельные обозначения элементов/параметров
+            if tok in {
+                "pH", "Na", "Cl", "Fe", "Cu", "Zn", "Ag", "Au", "Hg",
+                "Pb", "Sn", "Al", "Si", "Ca", "K", "Li", "Mg",
+                "H", "O", "C", "N", "S", "P",
+            }:
+                continue
+
+            return True
+
+        return False
+
+    def _force_ru_terms(self, text: str) -> str:
+        if not text:
+            return text
+
+        # сначала and/or как единый токен
+        text = re.sub(r"\band/or\b", "и/или", text, flags=re.IGNORECASE)
+
+        for en, ru in self.FORCED_RU_TERMS.items():
+            if en.lower() == "and/or":
+                continue
+            text = re.sub(rf"\b{re.escape(en)}\b", ru, text, flags=re.IGNORECASE)
+        return text
+
+    def _fix_cyrillic_confusables(self, text: str) -> str:
+        """
+        Исправляем латинские "похожие" буквы, если они встретились ВНУТРИ кириллического слова.
+        Пример: Vензол -> Бензол, cреда -> среда.
+        Также очищаем от мусорных символов.
+        """
+        if not text:
+            return ""
+
+        conf = str.maketrans({
+            "A": "А", "a": "а",
+            "B": "В", "E": "Е", "e": "е",
+            "K": "К", "M": "М", "H": "Н",
+            "O": "О", "o": "о",
+            "P": "Р", "p": "р",
+            "C": "С", "c": "с",
+            "T": "Т", "X": "Х", "x": "х",
+            "V": "В", "v": "в",
+            "Y": "У", "y": "у",
+            "I": "І", "i": "і",
+        })
+
+        text = re.sub(
+            r"(?<=[А-Яа-яЁё])[A-Za-z](?=[А-Яа-яЁё])",
+            lambda m: m.group(0).translate(conf),
+            text,
+        )
+        text = re.sub(
+            r"[A-Za-z](?=[А-Яа-яЁё])",
+            lambda m: m.group(0).translate(conf),
+            text,
+        )
+        text = re.sub(
+            r"(?<=[А-Яа-яЁё])[A-Za-z]",
+            lambda m: m.group(0).translate(conf),
+            text,
+        )
+
+        # Дополнительная очистка от странных символов (оставляем только ASCII, кириллицу и базовые символы)
+        text = re.sub(r"[^\x00-\x7F\u0400-\u04FF\s\-.,;:!?()[]{}\"'—–-_/\\|+<>=]", "", text)
+
+        return text
+
+    def _sanitize_for_ui(self, text: str) -> str:
+        if not text:
+            return ""
+
+        text = self._normalize_for_kivy_font(text)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+        cleaned = []
+        for ch in text:
+            code = ord(ch)
+
+            if ch in ("\n", "\t"):
+                cleaned.append(ch)
+                continue
+
+            # контрольные + суррогаты
+            if code < 32 or (0xD800 <= code <= 0xDFFF):
+                continue
+
+            cleaned.append(ch)
+
+        text = "".join(cleaned)
+
+        # убираем zero-width и soft-hyphen
+        text = text.translate(
+            {
+                0x200B: None,
+                0x200C: None,
+                0x200D: None,
+                0xFEFF: None,
+                0x00AD: None,
+                0x200E: None,
+                0x200F: None,
+            }
+        )
+
+        # Убираем повторяющиеся пробелы
+        text = re.sub(r"[ \t]{2,}", " ", text).strip()
+        
+        # Убираем пустые строки
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        text = "\n".join(lines)
+        
+        return text
+    
+    def _is_answer_quality_good(self, text: str) -> bool:
+        """
+        Проверяет качество ответа. Возвращает False если ответ подозрительный.
+        """
+        if not text or len(text.strip()) < 20:
+            return False
+        
+        # Проверка на наличие смешанных скриптов (латиница и кириллица в словах)
+        # Если есть слово с перемешанными скриптами (например "Срirты") - плохо
+        mixed_script_pattern = re.compile(r'[А-Яа-яЁё][A-Za-z]{2,}|[A-Za-z]{2,}[А-Яа-яЁё]')
+        if mixed_script_pattern.search(text):
+            return False
+        
+        # Проверка на наличие некорректных химических утверждений
+        # Например: "Спирты - это неорганические соединения"
+        wrong_statements = [
+            r'спирт.*неорганическ',
+            r'альдегид.*неорганическ',
+            r'кетон.*неорганическ',
+            r'кислот.*неорганическ',
+        ]
+        for pattern in wrong_statements:
+            if re.search(pattern, text, re.IGNORECASE):
+                return False
+        
+        return True
+
+    # -------- main --------
+    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 45) -> str:
+        """
+        Синхронный метод. Вызывать только из фонового потока.
+        history: [{"role":"user|assistant|system","content":"..."}]
+        """
+        history = history or []
+        text = (text or "").strip()
+        if not text:
+            return "Напиши вопрос 🙂"
+
+        m = self.mode()
+
+        # --- Retrieval: в ONLINE и OFFLINE ---
+        retrieved_ctx = ""
+        retrieved_sources: list[str] = []
+        strict_sources = os.environ.get("MM_STRICT_SOURCES", "0").strip().lower() not in ("0", "false", "no")
+
+        if self._is_chem_query(text):
+            term = self._extract_term_ru(text)
+            retrieved_ctx, retrieved_sources = self._build_retrieved_context_ru(term)
+
+            # Важно: если вопрос химический, а источники не найдены — НЕ отвечаем выдумкой (только в strict режиме)
+            if strict_sources and not retrieved_ctx:
+                return (
+                    "Не нашла подтверждённых данных в источниках. "
+                    "Уточни термин (например, добавь синоним в скобках) или напиши формулу/контекст.\n"
+                    f"Что искала: «{term}»"
+                )
+
+        # ЕДИНЫЙ system prompt живёт здесь (не в UI)
+        is_offline = m == "OFFLINE"
+        base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
+        base_messages.extend(history[-20:])
+
+        # Если есть факты — запрещаем добавлять что-то сверх них
+        if retrieved_ctx:
+            base_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "НИЖЕ — ФАКТЫ ИЗ ВНЕШНИХ ИСТОЧНИКОВ.\n"
+                        "Отвечай ТОЛЬКО на их основе.\n"
+                        "Запрещено добавлять новые факты, которых нет в этих данных.\n"
+                        "Если чего-то не хватает — скажи, что данных недостаточно.\n\n"
+                        f"{retrieved_ctx}"
+                    ),
+                }
+            )
+
+        base_messages.append({"role": "user", "content": text})
+
+        def do_call(messages: list[dict]) -> str:
+            if m == "ONLINE":
+                try:
+                    return self._ask_online(messages, timeout_sec=timeout_sec)
+                except Exception as e:
+                    with self._lock:
+                        self._online_err = str(e)
+                        self._online_ok = False
+                    self._switch("OFFLINE")
+                    return self._ask_offline(messages)
+
+            if m == "OFFLINE":
+                return self._ask_offline(messages)
+
+            try:
+                return self._ask_offline(messages)
+            except Exception:
+                return "ИИ сейчас недоступен: нет доступа ни к онлайн, ни к оффлайн модели."
+
+        answer = (do_call(base_messages) or "").strip()
+
+        # Если был retrieval, но ответ пуст — не выдумываем
+        if retrieved_ctx and not answer:
+            return (
+                "Нашла данные в источниках, но не смогла сформировать ответ. "
+                "Попробуй задать вопрос короче."
+            )
+
+        # Переписывание на русском (до 3 попыток), если проскочила латиница или ответ некачественный
+        for attempt in range(3):
+            if self._is_answer_quality_good(answer) and not self._needs_russian_rewrite(answer):
+                break
+            
+            # Если после 2 попыток все еще плохо - используем фоллбэк ответ
+            if attempt >= 2 and not self._is_answer_quality_good(answer):
+                answer = "К сожалению, я не смог дать корректный ответ на этот вопрос. Попробуйте переформулировать вопрос или задать другой."
+                break
+            
+            rewrite_messages = [
+                {"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)},
+                {
+                    "role": "user",
+                    "content": (
+                        "Перепиши ответ СТРОГО на русском языке.\n"
+                        "1) Убери ВСЕ английские слова, кроме химических формул.\n"
+                        "2) Не используй странные символы, напиши обычными буквами.\n"
+                        "3) Если ответ химически некорректный - напиши честное 'я не знаю'.\n"
+                        "4) Химические формулы: H2O, CO2, NaOH, CH3OH, C2H5OH.\n"
+                        "5) Сохрани смысл оригинального ответа.\n\n"
+                        f"ОРИГИНАЛ:\n{answer}"
+                    ),
+                },
+            ]
+            rewritten = (do_call(rewrite_messages) or "").strip()
+            if rewritten and rewritten != answer:
+                answer = rewritten
+            else:
+                break
+
+        # Верификатор (можно отключить MM_AI_VERIFY=0)
+        verify_enabled = os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
+        if verify_enabled and answer:
+            verify_messages = [
+                {"role": "system", "content": self._verifier_prompt_ru()},
+                {"role": "user", "content": answer},
+            ]
+            verified = (do_call(verify_messages) or "").strip()
+            if verified:
+                answer = verified
+
+        # Финальные фильтры
+        answer = self._force_ru_terms(answer)
+        answer = self._sanitize_for_ui(answer)
+        answer = self._fix_cyrillic_confusables(answer)
+
+        if retrieved_sources:
+            answer = answer.strip() + "\n\nИсточники: " + ", ".join(retrieved_sources)
+
+        return answer
+
+    # -------- internals --------
+    def _switch(self, mode: str) -> None:
+        with self._lock:
+            if self._mode != mode:
+                self._mode = mode
+                self._last_switch = time.time()
+
+    def _read_token(self) -> str:
+        if self._hf_token:
+            return self._hf_token
+        if not os.path.exists(self.hf_token_path):
+            return ""
+        tok = (open(self.hf_token_path, "r", encoding="utf-8").read() or "").strip()
+        self._hf_token = tok
+        return tok
+
+    def _is_internet_ok(self, host: str = "router.huggingface.co", port: int = 443, timeout: float = 2.5) -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    def _try_import_llama(self) -> bool:
+        try:
+            import llama_cpp  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+    def _ensure_llama(self):
+        with self._lock:
+            if self._llama is not None:
+                return self._llama
+
+        try:
+            from llama_cpp import Llama  # type: ignore
+
+            llm = Llama(
+                model_path=self.offline_model_path,
+                n_ctx=int(os.environ.get("LLAMA_N_CTX", "2048")),
+                n_threads=int(os.environ.get("LLAMA_THREADS", "4")),
+                n_gpu_layers=int(os.environ.get("LLAMA_GPU_LAYERS", "0")),
+                verbose=False,
+            )
+            with self._lock:
+                self._llama = llm
+                self._llama_err = ""
+            return llm
+        except Exception as e:
+            with self._lock:
+                self._llama_err = str(e)
+            raise
+
+    def _ask_offline(self, messages: list[dict]) -> str:
+        llm = self._ensure_llama()
+        res = llm.create_chat_completion(
+            messages=messages,
+            temperature=0.2,
+            top_p=0.95,
+            max_tokens=768,
+        )
+        try:
+            return (res["choices"][0]["message"]["content"] or "").strip()
+        except Exception:
+            return str(res)
+
+    def _ask_online(self, messages: list[dict], timeout_sec: int) -> str:
+        tok = self._read_token()
+        if not tok:
+            raise RuntimeError("HF token missing")
+
+        base = os.environ.get("HF_ROUTER_BASE", "https://router.huggingface.co/v1")
+        url = base.rstrip("/") + "/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {tok}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": 800,
+        }
+
+        r = self._http.post(url, headers=headers, json=payload, timeout=timeout_sec)
+
+        if r.status_code >= 400:
+            raise RuntimeError(f"HF error {r.status_code}: {r.text[:300]}")
+        data = r.json()
+        try:
+            return (data["choices"][0]["message"]["content"] or "").strip()
+        except Exception:
+            return json.dumps(data)[:800]
+
+    def _health_loop(self) -> None:
+        """
+        Авто-переключение:
+          - если есть интернет и токен -> ONLINE
+          - иначе если есть оффлайн модель и llama_cpp -> OFFLINE
+          - иначе N/A
+        """
+        while not self._stop:
+            if not hasattr(self, "_internet_fail_streak"):
+                self._internet_fail_streak = 0
+            if not hasattr(self, "_internet_ok_cached"):
+                self._internet_ok_cached = False
+
+            try:
+                internet_now = self._is_internet_ok()
+                token_ok = bool(self._read_token())
+
+                if internet_now:
+                    self._internet_fail_streak = 0
+                    self._internet_ok_cached = True
+                else:
+                    self._internet_fail_streak += 1
+                    if self._internet_fail_streak >= 3:
+                        self._internet_ok_cached = False
+
+                internet = self._internet_ok_cached
+
+                offline_ok = (
+                    os.path.exists(self.offline_model_path)
+                    and os.path.getsize(self.offline_model_path) > 0
+                    and self._try_import_llama()
+                )
+
+                if internet and token_ok:
+                    with self._lock:
+                        self._online_ok = True
+                        self._online_err = ""
+                    self._switch("ONLINE")
+                elif offline_ok:
+                    with self._lock:
+                        self._online_ok = False
+                    self._switch("OFFLINE")
+                else:
+                    with self._lock:
+                        self._online_ok = False
+                    self._switch("N/A")
+
+            except Exception as e:
+                with self._lock:
+                    self._online_ok = False
+                    self._online_err = str(e)
+                self._switch("N/A")
+
+            time.sleep(12.0)

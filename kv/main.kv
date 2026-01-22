@@ -1,0 +1,342 @@
+#:kivy 2.3.1
+#:import Window kivy.core.window.Window
+
+# ===== Screen templates (single KV file) =====
+
+<HomeScreen>:
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: dp(24)
+        spacing: dp(10)
+
+        # top spacer
+        Widget:
+            size_hint_y: 0.12
+
+        # Title higher & bigger
+        MDLabel:
+            text: "Molecule Mentor"
+            halign: "center"
+            theme_text_color: "Custom"
+            text_color: app.mm_text
+            bold: True
+            adaptive_height: True
+            # оставляю как было у тебя сейчас (если хочешь ещё больше — скажешь)
+            font_size: max(dp(48), min(dp(100), root.height * 0.065))
+
+        Widget:
+            size_hint_y: 0.04
+
+        # Center menu: wider + fixed equal width for all buttons
+        MDBoxLayout:
+            orientation: "vertical"
+            size_hint: (None, None)
+
+            # СДЕЛАТЬ ШИРЕ:
+            width: min(root.width * 0.78, dp(720))
+
+            height: self.minimum_height
+            pos_hint: {"center_x": 0.5, "center_y": 0.50}
+            spacing: dp(16)
+
+            # Button 1
+            MDButton:
+                style: "filled"
+                size_hint_x: None
+                width: self.parent.width
+                size_hint_y: None
+                height: max(dp(58), min(dp(84), root.height * 0.095))
+                md_bg_color: app.mm_primary
+                on_release: app.open_courses()
+
+                MDButtonText:
+                    text: "Курсы (10 класс)"
+                    theme_text_color: "Custom"
+                    text_color: app.mm_text
+
+            # Button 2
+            MDButton:
+                style: "filled"
+                size_hint_x: None
+                width: self.parent.width
+                size_hint_y: None
+                height: max(dp(58), min(dp(84), root.height * 0.095))
+                md_bg_color: app.mm_surface2
+                on_release: app.open_molecules()
+
+                MDButtonText:
+                    text: "Молекулы (3D)"
+                    theme_text_color: "Custom"
+                    text_color: app.mm_text
+
+            # Button 3
+            MDButton:
+                style: "filled"
+                size_hint_x: None
+                width: self.parent.width
+                size_hint_y: None
+                height: max(dp(58), min(dp(84), root.height * 0.095))
+                md_bg_color: app.mm_accent
+                on_release: app.open_reactions()
+
+                MDButtonText:
+                    text: "Реакции"
+                    theme_text_color: "Custom"
+                    text_color: app.mm_text
+
+        # bottom spacer
+        Widget:
+            size_hint_y: 0.22
+
+
+<CoursesScreen>:
+    MDBoxLayout:
+        id: courses_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<CourseTopicScreen>:
+    MDBoxLayout:
+        id: topic_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<QuizScreen>:
+    MDBoxLayout:
+        id: quiz_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<MoleculesScreen>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: dp(16)
+        spacing: dp(12)
+
+        # Поиск
+        MDTextField:
+            id: search_field
+            mode: "outlined"
+            size_hint_y: None
+            height: dp(52)
+            multiline: False
+
+            on_text: root.on_search(self.text)
+            
+            foreground_color: app.mm_text
+            cursor_color: app.mm_text
+            
+            theme_text_color: "Custom"
+            text_color: app.mm_text
+            
+            selection_text_color: 1, 1, 1, 1
+            selection_color: 0.45, 0.5, 0.9, 0.35
+            
+            line_color_normal: app.mm_text2
+            line_color_focus: app.mm_accent
+
+            MDTextFieldLeadingIcon:
+                icon: "magnify"
+                theme_icon_color: "Custom"
+                icon_color: app.mm_text2
+
+            MDTextFieldHintText:
+                text: "Найти молекулу"
+                theme_text_color: "Custom"
+                text_color: app.mm_text2
+
+        # Список
+        ScrollView:
+            do_scroll_x: False
+            bar_width: dp(6)
+
+            MDList:
+                id: molecules_list
+                
+<MoleculeViewerScreen>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: dp(12)
+        spacing: dp(10)
+
+        # Тут будет 3D-виджет (добавляется из Python)
+        BoxLayout:
+            id: viewer_host
+            orientation: "vertical"
+            size_hint: 1, 1
+
+<ReactionsScreen>:
+    MDBoxLayout:
+        id: reactions_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+        
+<ReactionViewerScreen>:
+    # контент строится из Python, чтобы не ловить несовместимости виджетов KivyMD 2.x в KV
+    MDBoxLayout:
+        id: reaction_viewer_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<AIAssistantScreen>:
+    MDBoxLayout:
+        id: ai_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+
+# ===== Root layout =====
+
+<MMRoot@FloatLayout>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: "vertical"
+        size_hint: 1, 1
+
+        # ===== Top bar =====
+                # ===== Top bar =====
+        BoxLayout:
+            size_hint_y: None
+            height: dp(60)
+            padding: dp(12), 0
+            spacing: dp(10)
+            canvas.before:
+                Color:
+                    rgba: app.mm_surface
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            # --- Left: Back (fixed width) ---
+            MDButton:
+                id: back_btn
+                size_hint_x: None
+                width: dp(96)
+                style: "text"
+                opacity: 1 if app.back_visible else 0
+                disabled: not app.back_visible
+                on_release: app.go_back()
+                MDButtonText:
+                    text: "Назад"
+                    theme_text_color: "Custom"
+                    text_color: app.mm_text
+
+            # --- Center: title (takes all remaining space) ---
+            AnchorLayout:
+                anchor_x: "center"
+                anchor_y: "center"
+                size_hint_x: 1
+
+                MDLabel:
+                    text: app.top_title
+                    halign: "center"
+                    valign: "middle"
+                    bold: True
+                    theme_text_color: "Custom"
+                    text_color: app.mm_primary if app.top_title == "Главная" else app.mm_text
+
+                    # ВАЖНО: не переносим, не режем
+                    max_lines: 2
+                    shorten: False
+                    text_size: (self.width, None)
+
+                    # Защита от узких: размер зависит от доступной ширины центра
+                    # - на широких окнах растёт
+                    # - на узких уменьшается, чтобы "Главная" влезла полностью
+                    font_size: min(dp(34), max(dp(16), root.width * 0.03))
+
+            # --- Right: status + info (fixed width) ---
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_x: None
+                width: min(dp(180), root.width * 0.28)
+                size_hint_y: None
+                height: dp(60)
+                padding: 0, dp(6), 0, 0
+                spacing: dp(6)
+                pos_hint: {"center_y": 0.5}
+
+                MDLabel:
+                    text: "ONLINE" if app.ai_status == "ONLINE" else "OFFLINE" if app.ai_status == "OFFLINE" else "ИИ недоступен"
+                    halign: "right"
+                    valign: "middle"
+                    theme_text_color: "Custom"
+                    text_color:
+                        (0.20, 0.85, 0.35, 1) if app.ai_status == "ONLINE" \
+                        else (0.15, 0.65, 0.95, 1) if app.ai_status == "OFFLINE" \
+                        else (0.85, 0.85, 0.85, 1)
+                    font_size: dp(14)
+                    font_style: "Caption"
+                    size_hint_y: 1
+
+                MDIconButton:
+                    icon: "information-outline"
+                    theme_icon_color: "Custom"
+                    icon_color: app.mm_text
+                    pos_hint: {"center_y": 0.5}
+                    on_release: app.show_ai_info()
+
+        # ===== Content =====
+        ScreenManager:
+            id: sm
+
+        # ===== Bottom bar =====
+        BoxLayout:
+            size_hint_y: None
+            height: dp(64)
+            padding: dp(12), dp(8)
+            canvas.before:
+                Color:
+                    rgba: app.mm_surface
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            MDIconButton:
+                icon: "home"
+                theme_icon_color: "Custom"
+                icon_color: app.mm_text
+                opacity: 0 if root.ids.sm.current == "home" else 1
+                disabled: True if root.ids.sm.current == "home" else False
+                on_release: app.open_home()
+
+            Widget:
+
+    # ===== Floating AI button =====
+    MDFabButton:
+        icon: "robot-outline"
+        style: "standard"
+        md_bg_color: app.mm_primary
+        theme_icon_color: "Custom"
+        icon_color: (0, 0, 0, 1)
+        pos_hint: {"right": 0.965, "y": 0.02}
+        on_release: app.open_ai_assistant()
+
+
+MMRoot:
