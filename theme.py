@@ -14,16 +14,18 @@ class AppTheme:
     surface2: RGBA
     primary: RGBA
     accent: RGBA
+    button_color: RGBA
     text: RGBA
     text2: RGBA
 
 
 THEME = AppTheme(
-    bg=(0.06, 0.07, 0.10, 1.0),        # deep indigo-ish
-    surface=(0.10, 0.12, 0.18, 1.0),   # card background
-    surface2=(0.13, 0.16, 0.24, 1.0),  # elevated card
-    primary=(0.22, 0.87, 0.80, 1.0),   # tiffany
-    accent=(0.55, 0.62, 0.98, 1.0),    # light blue-violet
+    bg=(0.12, 0.15, 0.25, 1.0),        # немного светлее сине-фиолетовый
+    surface=(0.10, 0.12, 0.18, 1.0),   # карточки
+    surface2=(0.13, 0.16, 0.24, 1.0),  # приподнятые карточки
+    primary=(0.22, 0.87, 0.80, 1.0),   # тиффани (яркий)
+    accent=(0.55, 0.62, 0.98, 1.0),    # светло-сине-фиолетовый
+    button_color=(0.22, 0.87, 0.80, 1.0),
     text=(0.95, 0.96, 0.99, 1.0),
     text2=(0.75, 0.78, 0.86, 1.0),
 )
@@ -40,6 +42,7 @@ def apply_to_app(app) -> None:
     app.mm_surface2 = THEME.surface2
     app.mm_primary = THEME.primary
     app.mm_accent = THEME.accent
+    app.mm_button_color = THEME.button_color
     app.mm_text = THEME.text
     app.mm_text2 = THEME.text2
 

@@ -62,6 +62,9 @@ class AIEngine:
     # -------- public API --------
     def stop(self) -> None:
         self._stop = True
+        # Ждём завершения health thread, чтобы избежать use-after-free
+        if self._health_thread and self._health_thread.is_alive():
+            self._health_thread.join(timeout=2.0)
 
     def mode(self) -> str:
         with self._lock:
@@ -128,6 +131,18 @@ class AIEngine:
         "aqueous": "водный",
         "ionic": "ионный",
     }
+    
+    # Исправление типичных опечаток модели (галлюцинации/ошибки токенизации)
+    TYPO_FIXES = {
+        "спиры": "спирты",
+        "спиров": "спиртов",
+        "спирам": "спиртам",
+        "спирами": "спиртами",
+        "спирах": "спиртах",
+        "альдегиы": "альдегиды",
+        "кетоы": "кетоны",
+        "кислоы": "кислоты",
+    }
 
     # -------- prompts --------
     def _system_prompt_ru(self, is_offline: bool = False) -> str:
@@ -137,12 +152,17 @@ class AIEngine:
             "Запрещено использовать английские слова, кроме химических формул.\n"
             
             "КРИТИЧЕСКИ ПРАВИЛА:\n"
-            "1) Пиши только факты из школьного курса химии.\n"
+            "1) Пиши только ВЕРНЫЕ факты из школьного курса химии.\n"
             "2) Если не уверен в ответе — напиши «Я не знаю точного ответа».\n"
-            "3) Никогда не выдумывай данные.\n"
+            "3) Никогда не выдумывай данные и не давай неверных определений.\n"
             "4) Латинские буквы ТОЛЬКО в формулах: H2O, CO2, NaOH, CH3OH, C2H5OH, R-COOH.\n"
             "5) Символы: →, <->, +, -, =, цифры — разрешены в формулах.\n"
             "6) Не используй спецсимволы Unicode (↑, ↓, ∞, ± и т.д.) — замени их текстом.\n"
+            
+            "ВАЖНЫЕ ХИМИЧЕСКИЕ ФАКТЫ:\n"
+            "- Спирты — это производные углеводородов, в которых один атом водорода замещён гидроксильной группой -OH.\n"
+            "- Спирты НЕ ЯВЛЯЮТСЯ производными карбоновых кислот.\n"
+            "- Общая формула спиртов: CnH2n+1OH или R-OH.\n"
             
             "СТРУКТУРА ОТВЕТА:\n"
             "1) Определение (что это).\n"
@@ -419,6 +439,23 @@ class AIEngine:
                 continue
             text = re.sub(rf"\b{re.escape(en)}\b", ru, text, flags=re.IGNORECASE)
         return text
+    
+    def _fix_typos(self, text: str) -> str:
+        """Исправляет типичные опечатки модели (спиры -> спирты и т.п.)."""
+        if not text:
+            return text
+        
+        for typo, fix in self.TYPO_FIXES.items():
+            # Регистронезависимая замена с сохранением регистра первой буквы
+            pattern = re.compile(re.escape(typo), re.IGNORECASE)
+            def replace_match(m):
+                matched = m.group(0)
+                if matched[0].isupper():
+                    return fix.capitalize()
+                return fix
+            text = pattern.sub(replace_match, text)
+        
+        return text
 
     def _fix_cyrillic_confusables(self, text: str) -> str:
         """
@@ -459,7 +496,8 @@ class AIEngine:
         )
 
         # Дополнительная очистка от странных символов (оставляем только ASCII, кириллицу и базовые символы)
-        text = re.sub(r"[^\x00-\x7F\u0400-\u04FF\s\-.,;:!?()[]{}\"'—–-_/\\|+<>=]", "", text)
+        allowed_chars = r"\x00-\x7F\u0400-\u04FF\s.,;:!?(){}\"'/\\|+<>=\-\[\]_"
+        text = re.sub(r"[^" + allowed_chars + r"]", "", text)
 
         return text
 
@@ -536,10 +574,11 @@ class AIEngine:
         return True
 
     # -------- main --------
-    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 45) -> str:
+    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 45, verify: bool = True) -> str:
         """
         Синхронный метод. Вызывать только из фонового потока.
         history: [{"role":"user|assistant|system","content":"..."}]
+        verify: если False — пропускаем этап верификатора (для коротких запросов)
         """
         history = history or []
         text = (text or "").strip()
@@ -595,12 +634,19 @@ class AIEngine:
                     with self._lock:
                         self._online_err = str(e)
                         self._online_ok = False
+                        # Мгновенно сбрасываем кэш интернета при ошибке запроса
+                        self._internet_ok_cached = False
+                        self._internet_fail_streak = 1
                     self._switch("OFFLINE")
                     return self._ask_offline(messages)
 
             if m == "OFFLINE":
-                return self._ask_offline(messages)
+                try:
+                    return self._ask_offline(messages)
+                except Exception as e:
+                    return f"Оффлайн-модель временно недоступна: {str(e)[:100]}"
 
+            # Режим N/A — пробуем оффлайн как последний шанс
             try:
                 return self._ask_offline(messages)
             except Exception:
@@ -646,8 +692,8 @@ class AIEngine:
             else:
                 break
 
-        # Верификатор (можно отключить MM_AI_VERIFY=0)
-        verify_enabled = os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
+        # Верификатор (можно отключить MM_AI_VERIFY=0 или параметром verify=False)
+        verify_enabled = verify and os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
         if verify_enabled and answer:
             verify_messages = [
                 {"role": "system", "content": self._verifier_prompt_ru()},
@@ -659,6 +705,7 @@ class AIEngine:
 
         # Финальные фильтры
         answer = self._force_ru_terms(answer)
+        answer = self._fix_typos(answer)  # спиры -> спирты и т.п.
         answer = self._sanitize_for_ui(answer)
         answer = self._fix_cyrillic_confusables(answer)
 
@@ -722,17 +769,26 @@ class AIEngine:
             raise
 
     def _ask_offline(self, messages: list[dict]) -> str:
-        llm = self._ensure_llama()
-        res = llm.create_chat_completion(
-            messages=messages,
-            temperature=0.2,
-            top_p=0.95,
-            max_tokens=768,
-        )
         try:
+            llm = self._ensure_llama()
+        except Exception as e:
+            err_msg = str(e)
+            if "llama_cpp" in err_msg.lower() or "import" in err_msg.lower():
+                return "Оффлайн-модель недоступна: не удалось загрузить библиотеку llama_cpp."
+            if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
+                return "Оффлайн-модель не найдена. Пожалуйста, скачайте модель в настройках."
+            return f"Ошибка загрузки оффлайн-модели: {err_msg[:100]}"
+        
+        try:
+            res = llm.create_chat_completion(
+                messages=messages,
+                temperature=0.2,
+                top_p=0.95,
+                max_tokens=768,
+            )
             return (res["choices"][0]["message"]["content"] or "").strip()
-        except Exception:
-            return str(res)
+        except Exception as e:
+            return f"Ошибка генерации ответа оффлайн-модели: {str(e)[:100]}"
 
     def _ask_online(self, messages: list[dict], timeout_sec: int) -> str:
         tok = self._read_token()
@@ -785,7 +841,8 @@ class AIEngine:
                     self._internet_ok_cached = True
                 else:
                     self._internet_fail_streak += 1
-                    if self._internet_fail_streak >= 3:
+                    # Быстрое переключение: 1 неудача = сразу offline
+                    if self._internet_fail_streak >= 1:
                         self._internet_ok_cached = False
 
                 internet = self._internet_ok_cached
@@ -816,4 +873,4 @@ class AIEngine:
                     self._online_err = str(e)
                 self._switch("N/A")
 
-            time.sleep(12.0)
+            time.sleep(5.0)  # Проверяем чаще для быстрой реакции на потерю связи

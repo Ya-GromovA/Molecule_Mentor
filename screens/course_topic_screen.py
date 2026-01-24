@@ -1,25 +1,52 @@
 # /home/ulyashka_88/molecule-mentor/screens/course_topic_screen.py
 from __future__ import annotations
 
-from pathlib import Path
-
 from kivy.clock import Clock
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.logger import Logger
 from kivy.metrics import dp
+from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.image import Image
 
-from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import (
-    MDList,
-    MDListItem,
-    MDListItemHeadlineText,
-    MDListItemSupportingText,
-)
 from kivymd.uix.scrollview import MDScrollView
 
 from .base_screen import BaseScreen
+
+
+class ClickableCard(ButtonBehavior, BoxLayout):
+    """Кликабельная карточка для списков курсов."""
+
+    def __init__(self, on_click=None, bg_color=(0.10, 0.12, 0.18, 1), **kwargs):
+        super().__init__(**kwargs)
+        self._on_click = on_click
+        self._bg_color = bg_color
+        self._pressed_color = (
+            min(1.0, bg_color[0] + 0.08),
+            min(1.0, bg_color[1] + 0.08),
+            min(1.0, bg_color[2] + 0.08),
+            bg_color[3],
+        )
+
+        with self.canvas.before:
+            self._color_instr = Color(*self._bg_color)
+            self._rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[18, 18, 18, 18])
+
+        self.bind(pos=self._update_rect, size=self._update_rect)
+
+    def _update_rect(self, *_):
+        self._rect.pos = self.pos
+        self._rect.size = self.size
+
+    def on_press(self):
+        self._color_instr.rgba = self._pressed_color
+        Logger.info("[ClickableCard] on_press")
+
+    def on_release(self):
+        self._color_instr.rgba = self._bg_color
+        Logger.info(f"[ClickableCard] on_release, has callback: {self._on_click is not None}")
+        if self._on_click:
+            self._on_click()
 
 
 class CourseTopicScreen(BaseScreen):
@@ -38,25 +65,42 @@ class CourseTopicScreen(BaseScreen):
 
     # ---------------- UI styling ----------------
 
-    def _style_list_item(
-        self,
-        item: MDListItem,
-        headline: MDListItemHeadlineText | None = None,
-        supporting: MDListItemSupportingText | None = None,
-    ) -> None:
+    def _make_clickable_item(self, title: str, subtitle: str = None, on_click=None) -> ClickableCard:
+        """Создаёт кликабельный элемент списка."""
         app = self.get_app()
 
-        item.theme_bg_color = "Custom"
-        item.md_bg_color = app.mm_surface
-        item.radius = [dp(18), dp(18), dp(18), dp(18)]
-        item.padding = [dp(16), dp(12), dp(16), dp(12)]
+        card = ClickableCard(
+            on_click=on_click,
+            bg_color=app.mm_surface,
+            orientation="vertical",
+            size_hint_y=None,
+            height=dp(72) if subtitle else dp(56),
+            padding=[dp(16), dp(12), dp(16), dp(12)],
+        )
 
-        if headline is not None:
-            headline.theme_text_color = "Custom"
-            headline.text_color = app.mm_text
-        if supporting is not None:
-            supporting.theme_text_color = "Custom"
-            supporting.text_color = app.mm_text2
+        headline = MDLabel(
+            text=title,
+            theme_text_color="Custom",
+            text_color=app.mm_text,
+            font_size=dp(16),
+            bold=True,
+            size_hint_y=None,
+            height=dp(24),
+        )
+        card.add_widget(headline)
+
+        if subtitle:
+            supporting = MDLabel(
+                text=subtitle,
+                theme_text_color="Custom",
+                text_color=app.mm_text2,
+                font_size=dp(14),
+                size_hint_y=None,
+                height=dp(20),
+            )
+            card.add_widget(supporting)
+
+        return card
 
     def _make_root(self) -> BoxLayout:
         app = self.get_app()
@@ -76,28 +120,6 @@ class CourseTopicScreen(BaseScreen):
             self._bg_rect.pos = self.parent.pos if self.parent else self.pos
             self._bg_rect.size = self.size
 
-    # ---------------- data helpers ----------------
-
-    def _content_base_dir(self) -> Path:
-        """
-        База для относительных путей в topic_blocks.content.
-        Обычно всё лежит рядом с courses.db: /data/courses/
-        """
-        app = self.get_app()
-        try:
-            db_path = Path(app.courses_db)  # в main.py это строка пути
-            return db_path.parent
-        except Exception:
-            return Path.cwd()
-
-    def _resolve_block_path(self, raw: str) -> str:
-        if not raw:
-            return ""
-        p = Path(raw)
-        if p.is_absolute():
-            return str(p)
-        return str((self._content_base_dir() / p).resolve())
-
     # ---------------- render ----------------
 
     def _render(self):
@@ -109,90 +131,13 @@ class CourseTopicScreen(BaseScreen):
         course_title = st.get("course_title") or "Курс"
         section_id = st.get("section_id")
         section_title = st.get("section_title") or "Раздел"
-        topic_id = st.get("topic_id")
-        topic_title = st.get("topic_title") or "Тема"
+
+        Logger.info(f"[CourseTopicScreen] nav_state: course_id={course_id}, section_id={section_id}")
 
         self.clear_widgets()
         root = self._make_root()
 
-        # ---- MODE 1: topic -> blocks (теория)
-        if topic_id is not None:
-            self.title = str(topic_title)
-            app.set_top_title(self.title)
-
-            blocks = repo.list_blocks(int(topic_id))
-            if not blocks:
-                root.add_widget(
-                    MDLabel(
-                        text="Материал темы пока пуст",
-                        halign="center",
-                        theme_text_color="Custom",
-                        text_color=app.mm_text2,
-                    )
-                )
-                self.add_widget(root)
-                return
-
-            scroll = MDScrollView(do_scroll_x=False)
-            col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=(0, 0))
-            col.bind(minimum_height=col.setter("height"))
-
-            for b in blocks:
-                card = MDCard(
-                    orientation="vertical",
-                    size_hint_y=None,
-                    padding=dp(14),
-                    radius=[dp(18), dp(18), dp(18), dp(18)],
-                    md_bg_color=app.mm_surface,
-                )
-
-                if b.block_type == "image":
-                    img_path = self._resolve_block_path(str(b.content))
-                    if img_path and Path(img_path).exists():
-                        img = Image(source=img_path, allow_stretch=True, keep_ratio=True, size_hint_y=None)
-                        img.height = dp(220)
-                        card.add_widget(img)
-                    else:
-                        card.add_widget(
-                            MDLabel(
-                                text=f"[картинка не найдена]\n{b.content}",
-                                theme_text_color="Custom",
-                                text_color=app.mm_text2,
-                            )
-                        )
-
-                    if b.caption:
-                        card.add_widget(
-                            MDLabel(
-                                text=str(b.caption),
-                                theme_text_color="Custom",
-                                text_color=app.mm_text2,
-                                size_hint_y=None,
-                            )
-                        )
-                else:
-                    # text by default
-                    card.add_widget(
-                        MDLabel(
-                            text=str(b.content or "").strip(),
-                            theme_text_color="Custom",
-                            text_color=app.mm_text,
-                            markup=False,
-                            size_hint_y=None,
-                        )
-                    )
-
-                # авто-высота карточки (примерно)
-                card.bind(minimum_height=card.setter("height"))
-                card.height = dp(10)  # стартовая, дальше Kivy разрулит через минимум у детей
-                col.add_widget(card)
-
-            scroll.add_widget(col)
-            root.add_widget(scroll)
-            self.add_widget(root)
-            return
-
-        # ---- MODE 2: section -> topics
+        # ---- MODE 1: section -> topics (список тем)
         if section_id is not None:
             self.title = str(section_title)
             app.set_top_title(self.title)
@@ -211,18 +156,25 @@ class CourseTopicScreen(BaseScreen):
                 return
 
             scroll = MDScrollView()
-            lst = MDList(spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
+            col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
+            col.bind(minimum_height=col.setter("height"))
+
+            # Кнопка для запуска теста
+            quiz_btn = self._make_clickable_item(
+                title="Пройти тест по курсу",
+                subtitle=f"Проверь свои знания ({len(topics)} тем)",
+                on_click=lambda cid=course_id: app.open_quiz_for_course(cid),
+            )
+            col.add_widget(quiz_btn)
 
             for t in topics:
-                item = MDListItem(
-                    on_release=lambda _w, tid=t.id, tt=t.title: app.open_topic(int(tid), str(tt))
+                item = self._make_clickable_item(
+                    title=str(t.title),
+                    on_click=lambda tid=t.id, tt=t.title: app.open_topic(int(tid), str(tt)),
                 )
-                headline = MDListItemHeadlineText(text=str(t.title))
-                item.add_widget(headline)
-                self._style_list_item(item, headline, None)
-                lst.add_widget(item)
+                col.add_widget(item)
 
-            scroll.add_widget(lst)
+            scroll.add_widget(col)
             root.add_widget(scroll)
             self.add_widget(root)
             return
@@ -257,17 +209,16 @@ class CourseTopicScreen(BaseScreen):
             return
 
         scroll = MDScrollView()
-        lst = MDList(spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
+        col.bind(minimum_height=col.setter("height"))
 
         for s in sections:
-            item = MDListItem(
-                on_release=lambda _w, sid=s.id, stt=s.title: app.open_section(int(sid), str(stt))
+            item = self._make_clickable_item(
+                title=str(s.title),
+                on_click=lambda sid=s.id, stt=s.title: app.open_section(int(sid), str(stt)),
             )
-            headline = MDListItemHeadlineText(text=str(s.title))
-            item.add_widget(headline)
-            self._style_list_item(item, headline, None)
-            lst.add_widget(item)
+            col.add_widget(item)
 
-        scroll.add_widget(lst)
+        scroll.add_widget(col)
         root.add_widget(scroll)
         self.add_widget(root)

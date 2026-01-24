@@ -48,12 +48,26 @@ class MoleculeViewerScreen(Screen):
         nav = getattr(self.app, "nav_state", {}) or {}
         pdb_path = nav.get("pdb_path")
         title = nav.get("title", "Молекула")
+        description = nav.get("description", "")
 
         # заголовок в TopBar
         try:
             self.app.set_top_title(title)
         except Exception:
             pass
+
+        # Заполняем описание
+        desc_label = self.ids.get("description_label")
+        desc_card = self.ids.get("description_card")
+        if desc_label and desc_card:
+            if description:
+                desc_label.text = description
+                desc_card.opacity = 1
+                desc_card.height = dp(100)
+            else:
+                desc_label.text = ""
+                desc_card.opacity = 0
+                desc_card.height = 0
 
         if not pdb_path:
             host.clear_widgets()
@@ -108,3 +122,12 @@ class MoleculeViewerScreen(Screen):
                 theme_text_color="Custom",
                 text_color=getattr(self.app, "mm_text", (1, 1, 1, 1)),
             ))
+
+    def open_editor(self) -> None:
+        """Открывает редактор молекулы с текущими данными."""
+        nav = getattr(self.app, "nav_state", {}) or {}
+        pdb_path = nav.get("pdb_path")
+        title = nav.get("title", "Молекула")
+        
+        if pdb_path:
+            self.app.open_molecule_editor(pdb_path, title)

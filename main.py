@@ -1,9 +1,35 @@
 from __future__ import annotations
 
+# ВАЖНО: Конфигурация Kivy ДОЛЖНА быть ДО импорта kivy модулей!
+import os
+import sys
+
+def _is_android() -> bool:
+    """Проверяем, запущены ли мы на Android."""
+    return 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
+
+# Платформо-зависимая конфигурация SDL/GL
+if _is_android():
+    # Android: исправляет краш "pthread_mutex_lock called on a destroyed mutex"
+    # Отключаем hardware rendering в SDL
+    os.environ.setdefault('SDL_RENDER_DRIVER', 'software')
+    os.environ.setdefault('KIVY_GL_BACKEND', 'gl')  # Стандартный OpenGL ES
+    # Отключаем многопоточный рендеринг (причина краша HWUI)
+    os.environ.setdefault('SDL_RENDER_BATCHING', '0')
+    os.environ.setdefault('SDL_HINT_RENDER_DRIVER', 'software')
+else:
+    # Desktop (Linux/WSL): используем стандартный sdl2
+    os.environ.setdefault('KIVY_GL_BACKEND', 'gl')
+
+# Kivy config (до импорта kivy!)
+from kivy.config import Config
+Config.set('graphics', 'multisamples', '0')  # Отключаем мультисемплинг — стабильнее
+if _is_android():
+    Config.set('kivy', 'pause_on_minimize', '0')  # Не паузить при минимизации на Android
+
 import json
 import sqlite3
 import threading
-import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
@@ -27,22 +53,27 @@ from kivymd.uix.snackbar import MDSnackbar
 from screens.home_screen import HomeScreen
 from screens.courses_screen import CoursesScreen
 from screens.course_topic_screen import CourseTopicScreen
+from screens.theory_screen import TheoryScreen
 from screens.quiz_screen import QuizScreen
 from screens.molecules_screen import MoleculesScreen
 from screens.molecule_viewer_screen import MoleculeViewerScreen
+from screens.molecule_editor_screen import MoleculeEditorScreen
 from screens.reaction_viewer_screen import ReactionViewerScreen
 from screens.reactions_screen import ReactionsScreen
+from screens.reaction_editor_screen import ReactionEditorScreen
 from screens.ai_assistant_screen import AIAssistantScreen
+from screens.model_download_screen import ModelDownloadScreen
 
 from utils.ai_engine import AIEngine
 from utils.course_repo import CourseRepo
-from utils.model_bootstrap import ensure_gguf_ready
+from utils.model_bootstrap import ensure_gguf_ready, needs_download
 from theme import THEME
 
 
-PROJECT_DIR = Path("/home/ulyashka_88/molecule-mentor")
-KV_PATH = PROJECT_DIR / "kv" / "main.kv"
+# Определяем корень проекта относительно текущего файла (работает и на Linux, и на Android)
+PROJECT_DIR = Path(__file__).resolve().parent
 
+KV_PATH = PROJECT_DIR / "kv" / "main.kv"
 COURSES_DB = PROJECT_DIR / "data" / "courses" / "courses.db"
 HF_TOKEN = PROJECT_DIR / "data" / "secrets" / "hf_token.txt"
 
@@ -218,9 +249,10 @@ class MoleculeMentorApp(MDApp):
         self.mm_surface2 = THEME.surface2
         self.mm_primary = THEME.primary
         self.mm_accent = THEME.accent
+        self.mm_button_color = THEME.button_color
         self.mm_text = THEME.text
         self.mm_text2 = THEME.text2
-        
+
         # Отдельные цвета для карточек молекул (чтобы не зависеть от surface2, который может стать светлым)
         self.mm_molecules_card_bg = self.mm_surface2      # тёмный как “кнопки/плитки” в меню
         self.mm_molecules_card_border = (1, 1, 1, 0.16)        # мягкая рамка
@@ -252,21 +284,23 @@ class MoleculeMentorApp(MDApp):
         sm.add_widget(HomeScreen(name="home"))
         sm.add_widget(CoursesScreen(name="courses"))
         sm.add_widget(CourseTopicScreen(name="course_topic"))
+        sm.add_widget(TheoryScreen(name="theory"))
         sm.add_widget(QuizScreen(name="quiz"))
         sm.add_widget(MoleculesScreen(name="molecules"))
         sm.add_widget(MoleculeViewerScreen(name="molecule_viewer"))
+        sm.add_widget(MoleculeEditorScreen(name="molecule_editor"))
         sm.add_widget(ReactionsScreen(name="reactions"))
         sm.add_widget(ReactionViewerScreen(name="reaction_viewer"))
+        sm.add_widget(ReactionEditorScreen(name="reaction_editor"))
         sm.add_widget(AIAssistantScreen(name="ai_assistant"))
+        sm.add_widget(ModelDownloadScreen(name="model_download"))
 
         sm.current = "home"
         return root
 
     def on_start(self):
-    
-            # гарантируем, что user_data_dir можно создать (os.mkdir не делает parents)
+        # Гарантируем, что user_data_dir можно создать
         try:
-            Path("/home/ulyashka_88/.config").mkdir(parents=True, exist_ok=True)
             Path(self.user_data_dir).mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print("[WARN] cannot prepare user_data_dir:", e)
@@ -279,8 +313,18 @@ class MoleculeMentorApp(MDApp):
             offline_model_path=offline_target,
         )
 
-        # фоновая подготовка оффлайн модели (склейка частей)
-        self._prepare_offline_model_async()
+        # Проверяем, нужно ли скачать модель (для Lite версии)
+        # Если модели нет и частей нет — показываем экран загрузки
+        need_dl = needs_download(OFFLINE_MODEL_NAME)
+        print(f"[STARTUP] needs_download={need_dl}, model={OFFLINE_MODEL_NAME}")
+        if need_dl:
+            # Lite версия: показываем экран скачивания
+            print("[STARTUP] Показываем экран скачивания модели")
+            self._show_download_screen_on_start()
+        else:
+            # Full версия или модель уже скачана: готовим модель в фоне
+            print("[STARTUP] Запускаем сборку/подготовку модели в фоне")
+            self._prepare_offline_model_async()
 
         Clock.schedule_interval(lambda *_: self._refresh_ai_status_async(), 15.0)
         self._refresh_ai_status_async()
@@ -289,14 +333,24 @@ class MoleculeMentorApp(MDApp):
 
         self.set_top_title("Главная")
         self.set_back_visible(False)
+    
+    def _show_download_screen_on_start(self):
+        """Показывает экран скачивания модели при первом запуске Lite версии."""
+        # Отложенный переход, чтобы UI успел инициализироваться
+        def show_screen(dt):
+            self.open_model_download()
+        Clock.schedule_once(show_screen, 0.5)
 
     def _prepare_offline_model_async(self) -> None:
         def work():
             try:
+                print("[OFFLINE] Начинаю подготовку оффлайн модели...")
                 # если модель уже собрана — быстро вернётся
                 p = ensure_gguf_ready(OFFLINE_MODEL_NAME)
+                print(f"[OFFLINE] Модель готова: {p}")
                 if self._ai_engine:
                     self._ai_engine.set_offline_model_path(str(p))
+                    print("[OFFLINE] Путь модели установлен в AIEngine")
 
                 def notify(_dt):
                     self.toast("Оффлайн модель готова")
@@ -304,6 +358,10 @@ class MoleculeMentorApp(MDApp):
 
                 Clock.schedule_once(notify, 0)
             except Exception as e:
+                import traceback
+                print(f"[OFFLINE] Ошибка подготовки модели: {e}")
+                traceback.print_exc()
+                
                 def notify_err(_dt):
                     # не падаем, просто сообщаем
                     self.toast(f"Оффлайн модель недоступна: {e}")
@@ -320,7 +378,9 @@ class MoleculeMentorApp(MDApp):
         except Exception:
             pass
         try:
-            self._executor.shutdown(wait=False, cancel_futures=True)
+            # wait=True чтобы дождаться завершения потоков и избежать
+            # краша "pthread_mutex_lock called on a destroyed mutex"
+            self._executor.shutdown(wait=True, cancel_futures=True)
         except Exception:
             pass
 
@@ -368,11 +428,34 @@ class MoleculeMentorApp(MDApp):
         if len(self._nav_stack) <= 1:
             self.open_home()
             return
-        self._nav_stack.pop()
+        
+        current = self._nav_stack.pop()
         prev = self._nav_stack[-1]
+        
+        # Очищаем nav_state при возврате на уровень выше
+        st = dict(self.nav_state or {})
+        if current == "theory":
+            # Возврат из теории — убираем topic_id
+            st.pop("topic_id", None)
+            st.pop("topic_title", None)
+        elif current == "course_topic" and st.get("section_id"):
+            # Возврат из списка тем — убираем section_id
+            st.pop("section_id", None)
+            st.pop("section_title", None)
+        self.nav_state = st
+        
         sm = self._sm()
         sm.transition = SlideTransition(direction="right")
         sm.current = prev
+        
+        # Принудительно обновляем экран
+        try:
+            scr = sm.get_screen(prev)
+            if hasattr(scr, "on_pre_enter"):
+                scr.dispatch("on_pre_enter")
+        except Exception:
+            pass
+        
         self.set_back_visible(prev != "home")
 
     # --- navigation API ---
@@ -392,10 +475,15 @@ class MoleculeMentorApp(MDApp):
         self.set_top_title("Молекулы")
         self._set_screen("molecules")
 
-    def open_molecule_viewer(self, pdb_path: str, title: str) -> None:
-        self.nav_state = {"pdb_path": pdb_path, "title": title}
+    def open_molecule_viewer(self, pdb_path: str, title: str, description: str = "") -> None:
+        self.nav_state = {"pdb_path": pdb_path, "title": title, "description": description}
         self.set_top_title(title)
         self._set_screen("molecule_viewer")
+
+    def open_molecule_editor(self, pdb_path: str, title: str) -> None:
+        self.nav_state = {"pdb_path": pdb_path, "title": title}
+        self.set_top_title(title)
+        self._set_screen("molecule_editor")
 
     def open_reactions(self) -> None:
         self.nav_state = {}
@@ -406,10 +494,21 @@ class MoleculeMentorApp(MDApp):
         self.nav_state = {"reaction_id": str(reaction_id), "title": str(title)}
         self.set_top_title(title)
         self._set_screen("reaction_viewer")
+    
+    def open_reaction_editor(self) -> None:
+        """Открыть редактор реакций 'Похимичим!'"""
+        self.nav_state = {}
+        self.set_top_title("Похимичим!")
+        self._set_screen("reaction_editor")
 
     def open_ai_assistant(self) -> None:
         self.set_top_title("ИИ-помощник")
         self._set_screen("ai_assistant")
+    
+    def open_model_download(self) -> None:
+        """Открыть экран скачивания модели."""
+        self.set_top_title("Загрузка модели")
+        self._set_screen("model_download")
         
     def open_course(self, course_id: int, course_title: str) -> None:
         """
@@ -444,16 +543,17 @@ class MoleculeMentorApp(MDApp):
 
         self.nav_state = st
         self.set_top_title(section_title)
-        self._set_screen("course_topic")
+        self._set_screen("course_topic", force=True)
 
 
     def open_topic(self, topic_id: int, topic_title: str) -> None:
+        """Открывает экран теории для выбранной темы."""
         st = dict(self.nav_state or {})
         st["topic_id"] = int(topic_id)
         st["topic_title"] = str(topic_title)
         self.nav_state = st
         self.set_top_title(topic_title)
-        self._set_screen("course_topic", force=True)
+        self._set_screen("theory")
 
     def open_quiz_for_course(self, course_id: int) -> None:
         self.nav_state = {"course_id": int(course_id)}

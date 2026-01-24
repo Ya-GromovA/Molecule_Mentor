@@ -5,30 +5,31 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 # --- Display / X11 ---
-# ÃÓÊÌÓ ÔÂÂÓÔÂ‰ÂÎËÚ¸: DISPLAY=:0 ./run_desktop_wsl.sh
+# –ú–æ–∂–Ω–æ –ø–µ—Ä–µ–æ–ø—Ä–µ–¥–µ–ª–∏—Ç—å: DISPLAY=:0 ./run_desktop_wsl.sh
 export DISPLAY="${DISPLAY:-:0}"
 
-# --- SDL / Kivy window backend ---
+# --- Kivy backend –¥–ª—è WSL ---
+# –ü—ã—Ç–∞–µ–º—Å—è –∏—Å–ø–æ–ª—å–∑–æ–≤–∞—Ç—å EGL –≤–º–µ—Å—Ç–æ GLX –¥–ª—è –ª—É—á—à–µ–π —Å–æ–≤–º–µ—Å—Ç–∏–º–æ—Å—Ç–∏ —Å WSL
 export KIVY_WINDOW="${KIVY_WINDOW:-sdl2}"
-export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 
-# ¬‡ÊÌÓ: ÛıÓ‰ËÏ Ò GLX (ÍÓÚÓ˚È ‚ WSL ˜‡ÒÚÓ Ô‡‰‡ÂÚ) Ì‡ EGL
+# –î–ª—è WSL1/2 —Å Windows X server (VcXsrv, XLaunch)
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export SDL_VIDEO_X11_FORCE_EGL="${SDL_VIDEO_X11_FORCE_EGL:-1}"
 
-# --- OpenGL: software render (ÒÚ‡·ËÎ¸ÌÓ ‰Îˇ WSL) ---
+# --- OpenGL: software render (–Ω–∞–¥—ë–∂–Ω–æ –¥–ª—è WSL) ---
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 export MESA_LOADER_DRIVER_OVERRIDE="${MESA_LOADER_DRIVER_OVERRIDE:-llvmpipe}"
 
-# ◊‡ÒÚÓ ÒÚ‡·ËÎËÁËÛÂÚ ÍÓÌÚÂÍÒÚ/¯ÂÈ‰Â˚ ‚ ÒÓÙÚ-ÂÌ‰ÂÂ
+# –ó–∞–¥–∞—ë–º –º–∏–Ω–∏–º–∞–ª—å–Ω—É—é –≤–µ—Ä—Å–∏—é OpenGL (–µ—Å–ª–∏ –¥—Ä–∞–π–≤–µ—Ä –Ω–µ —Å–æ–æ–±—â–∞–µ—Ç –≤–µ—Ä—Å–∏—é)
 export MESA_GL_VERSION_OVERRIDE="${MESA_GL_VERSION_OVERRIDE:-3.3}"
 export MESA_GLSL_VERSION_OVERRIDE="${MESA_GLSL_VERSION_OVERRIDE:-330}"
 
-# »ÌÓ„‰‡ ÔÓÏÓ„‡ÂÚ, ÂÒÎË ÒËÒÚÂÏ‡ ÛÔÓÌÓ Ô˚Ú‡ÂÚÒˇ ‚ indirect GLX
-# (ÓÒÚ‡‚ÎˇÂÏ ‚˚ÍÎ˛˜ÂÌÌ˚Ï ÔÓ ÛÏÓÎ˜‡ÌË˛ ó ‚ÍÎ˛˜‡È ÔË ÌÂÓ·ıÓ‰ËÏÓÒÚË)
-# export LIBGL_ALWAYS_INDIRECT=1
+# –í–∫–ª—é—á–∞–µ–º indirect GLX –µ—Å–ª–∏ –ø—Ä—è–º—ã–µ –≤—ã–∑–æ–≤—ã –Ω–µ —Ä–∞–±–æ—Ç–∞—é—Ç
+# (—á–∞—Å—Ç–æ –Ω—É–∂–Ω–æ –¥–ª—è X —Å–µ—Ä–≤–µ—Ä–æ–≤ –Ω–∞ Windows)
+export LIBGL_ALWAYS_INDIRECT="${LIBGL_ALWAYS_INDIRECT:-0}"
 
-# --- Kivy logging (˜ÚÓ·˚ ÎÓ„Ë ·˚ÎË ˜ËÚ‡ÂÏ˚ÏË) ---
+# --- Kivy logging ---
 export KIVY_LOG_LEVEL="${KIVY_LOG_LEVEL:-info}"
 
 # --- Sanity checks ---
@@ -48,6 +49,18 @@ echo "[INFO] Python:  $PROJECT_DIR/venv/bin/python"
 echo "[INFO] DISPLAY=${DISPLAY}"
 echo "[INFO] SDL_VIDEODRIVER=${SDL_VIDEODRIVER} | FORCE_EGL=${SDL_VIDEO_X11_FORCE_EGL}"
 echo "[INFO] Software GL: LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE}, GALLIUM_DRIVER=${GALLIUM_DRIVER}"
+
+# --- –ü—Ä–æ–≤–µ—Ä–∫–∞ X11 —Å–æ–µ–¥–∏–Ω–µ–Ω–∏—è ---
+echo "[INFO] –ü—Ä–æ–≤–µ—Ä–∫–∞ X11 —Å–æ–µ–¥–∏–Ω–µ–Ω–∏—è..."
+if ! timeout 3 xset q >/dev/null 2>&1; then
+    echo "[WARNING] X11 —Å–µ—Ä–≤–µ—Ä –Ω–µ–¥–æ—Å—Ç—É–ø–µ–Ω (DISPLAY=${DISPLAY})"
+    echo "[WARNING] –£–±–µ–¥–∏—Ç–µ—Å—å, —á—Ç–æ:"
+    echo "  1) –ù–∞ Windows —É—Å—Ç–∞–Ω–æ–≤–ª–µ–Ω X —Å–µ—Ä–≤–µ—Ä (VcXsrv, XLaunch –∏–ª–∏ WSLg)"
+    echo "  2) X —Å–µ—Ä–≤–µ—Ä –∑–∞–ø—É—â–µ–Ω –∏ —Ä–∞–∑—Ä–µ—à—ë–Ω –≤—Ö–æ–¥ —Å WSL (disable access control)"
+    echo "  3) –ü–µ—Ä–µ–º–µ–Ω–Ω–∞—è DISPLAY —É—Å—Ç–∞–Ω–æ–≤–ª–µ–Ω–∞ –∫–æ—Ä—Ä–µ–∫—Ç–Ω–æ"
+    echo ""
+    echo "[INFO] –ü–æ–ø—ã—Ç–∫–∞ –∑–∞–ø—É—Å–∫–∞ –≤ –ª—é–±–æ–º —Å–ª—É—á–∞–µ..."
+fi
 
 # --- Run ---
 exec "$PROJECT_DIR/venv/bin/python" "$PROJECT_DIR/main.py"

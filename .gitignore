@@ -27,6 +27,8 @@ data/app.sqlite3
 data/app.sqlite3-shm
 data/app.sqlite3-wal
 data/secrets/hf_token.txt
+data/models/*.gguf
+assets/models/*.gguf*
 *.log
 *.tar.gz
 *.keystore
@@ -38,7 +40,17 @@ data/secrets/hf_token.txt
 bin/
 project/
 
+# Third party
+third_party/
+
+# Large tools
+tools/bundletool.jar
+
+# Source documents (not needed in repo)
+data/source/
+
 # Temporary files
 *.bak
 *.tmp
 *.log
+.temp_headless/

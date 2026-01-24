@@ -54,25 +54,34 @@ class ReactionViewerScreen(BaseScreen):
         
      # ---------- UI helpers (KivyMD 2.x safe) ----------
     def _make_btn(self, label: str, on_release, bg_rgba=None):
-        btn = MDButton(style="filled", on_release=on_release)
+        btn = MDButton(
+            style="filled",
+            on_release=on_release,
+            size_hint_y=None,
+            height=dp(44),
+        )
         if bg_rgba is not None:
             btn.md_bg_color = bg_rgba
             btn.theme_bg_color = "Custom"
-        txt = MDButtonText(text=label)
+        txt = MDButtonText(text=label, font_size=dp(16))
         btn.add_widget(txt)
         return btn, txt
         
     # ---------- geometry helpers ----------
-    def _separate_molecules(self, atoms: List[Dict], bonds: List) -> List[Dict]:
+    def _separate_molecules(self, atoms: List[Dict], bonds: List) -> Tuple[List[Dict], List[List[int]]]:
         """
         Раздвигает отдельные молекулы/ионы внутри сцены, чтобы не накладывались.
         Молекула = связная компонента графа связей.
         Индексы атомов сохраняются.
+        
+        Returns:
+            Tuple[atoms, groups] - атомы и список групп для независимого вращения
         """
         if not atoms:
-            return atoms
+            return atoms, []
         if not bonds:
-            return atoms
+            # Каждый атом — отдельная группа
+            return atoms, [[i] for i in range(len(atoms))]
 
         n = len(atoms)
         adj: List[List[int]] = [[] for _ in range(n)]
@@ -103,9 +112,9 @@ class ReactionViewerScreen(BaseScreen):
                         stack.append(u)
             comps.append(comp)
 
-        # Если реально одна компонента — раздвигать нечего
+        # Если реально одна компонента — раздвигать нечего, но группу создаём
         if len(comps) <= 1:
-            return atoms
+            return atoms, comps
 
         def _get(a, key: str, default=0.0):
             # atoms can be dicts OR Atom-like objects with attributes x/y/z
@@ -129,39 +138,43 @@ class ReactionViewerScreen(BaseScreen):
 
         comp_meta.sort(key=lambda t: t[0])
 
-        # Раскладываем по X: накапливаем смещение
-        # gap зависит от размера молекул (чтобы большие не лезли на маленькие)
-        shifts: Dict[int, float] = {}
-        cursor = 0.0
+        # Раскладываем молекулы ТОЛЬКО по оси X (в один ряд)
+        shifts_x: Dict[int, float] = {}
+        shifts_y: Dict[int, float] = {}  # всегда 0
+        
         prev_right = None
-
+        
         for cx, width, comp, (x0, x1) in comp_meta:
-            w = max(width, 1.2)          # минимальный "размер", чтобы gap не был 0
-            gap = max(1.6, w * 0.9)      # зазор между молекулами
+            w = max(width, 0.5)
+            gap = max(0.3, w * 0.20)  # компактный зазор
+            
             if prev_right is None:
-                # первая молекула: ставим так, чтобы её центр был около 0
-                shift = -cx
-                cursor = shift
-                prev_right = x1 + shift
+                # Первая молекула: центрируем около 0
+                shift_x = -cx
+                prev_right = x1 + shift_x
             else:
-                # следующая: двигаем так, чтобы её левый край был правее prev_right + gap
+                # Следующая: ставим правее предыдущей
                 target_left = prev_right + gap
-                shift = target_left - x0
-                prev_right = x1 + shift
+                shift_x = target_left - x0
+                prev_right = x1 + shift_x
+            
             for k in comp:
-                shifts[k] = shift
+                shifts_x[k] = shift_x
+                shifts_y[k] = 0.0  # Все на одной высоте
 
         # применяем сдвиги (копию атомов, оригинал не трогаем)
         out = []
         AtomCls = atoms[0].__class__ if atoms else None
 
         for i, a in enumerate(atoms):
-            s = float(shifts.get(i, 0.0))
+            sx = float(shifts_x.get(i, 0.0))
+            sy = float(shifts_y.get(i, 0.0))
 
             # dict atoms
             if isinstance(a, dict):
                 aa = dict(a)
-                aa["x"] = float(aa.get("x", 0.0)) + s
+                aa["x"] = float(aa.get("x", 0.0)) + sx
+                aa["y"] = float(aa.get("y", 0.0)) + sy
                 out.append(aa)
                 continue
 
@@ -169,8 +182,8 @@ class ReactionViewerScreen(BaseScreen):
             try:
                 kwargs = {
                     "element": getattr(a, "element", None),
-                    "x": float(getattr(a, "x", 0.0)) + s,
-                    "y": float(getattr(a, "y", 0.0)),
+                    "x": float(getattr(a, "x", 0.0)) + sx,
+                    "y": float(getattr(a, "y", 0.0)) + sy,
                     "z": float(getattr(a, "z", 0.0)),
                     "label": getattr(a, "label", None),
                 }
@@ -181,18 +194,19 @@ class ReactionViewerScreen(BaseScreen):
                 out.append(AtomCls(**kwargs))
             except Exception:
                 try:
-                    setattr(a, "x", float(getattr(a, "x", 0.0)) + s)
+                    setattr(a, "x", float(getattr(a, "x", 0.0)) + sx)
+                    setattr(a, "y", float(getattr(a, "y", 0.0)) + sy)
                 except Exception:
                     pass
                 out.append(a)
 
-        # Центрируем всю сцену обратно к 0 (чтобы не "уезжала" камера)
-        def _get_out_x(a):
+        # Центрируем сцену по X (чтобы не "уезжала" камера)
+        def _get_x(a):
             if isinstance(a, dict):
                 return float(a.get("x", 0.0))
             return float(getattr(a, "x", 0.0))
 
-        xs_all = [_get_out_x(a) for a in out]
+        xs_all = [_get_x(a) for a in out]
         cx_all = (min(xs_all) + max(xs_all)) / 2.0
 
         if abs(cx_all) > 1e-6:
@@ -205,15 +219,19 @@ class ReactionViewerScreen(BaseScreen):
                     except Exception:
                         pass
 
-        return out
+        # Возвращаем атомы и группы (компоненты связности)
+        sorted_groups = [comp for (_, _, comp, _) in comp_meta]
+        return out, sorted_groups
 
     def _build(self) -> None:
         app = self.get_app()
         self.clear_widgets()
 
-        root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
+        root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
 
-        # Header info
+        # Header info - компактный заголовок
+        from kivy.metrics import sp
+        
         self._lbl_name = MDLabel(
             text="",
             bold=True,
@@ -221,8 +239,11 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text,
             halign="left",
             size_hint_y=None,
-            height=dp(28),
-            font_size=dp(20),
+            height=dp(24),
+            font_size=sp(16),  # Масштабируемый шрифт
+            shorten=True,
+            shorten_from="right",
+            text_size=(None, None),
         )
         self._lbl_eq = MDLabel(
             text="",
@@ -230,26 +251,36 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text2,
             halign="left",
             size_hint_y=None,
-            height=dp(22),
-            font_size=dp(14),
+            height=dp(18),
+            font_size=sp(12),  # Масштабируемый шрифт
+            shorten=True,
+            shorten_from="right",
         )
+        
+        # Привязываем ширину текста к ширине родителя
+        def _update_text_size(*_):
+            if self._lbl_name:
+                self._lbl_name.text_size = (root.width - dp(20), None)
+            if self._lbl_eq:
+                self._lbl_eq.text_size = (root.width - dp(20), None)
+        root.bind(width=_update_text_size)
 
         root.add_widget(self._lbl_name)
         root.add_widget(self._lbl_eq)
 
-        # --- BODY: 3D (больше) + нижняя панель (ниже) ---
-        body = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(8))
+        # --- BODY: 3D (больше) + нижняя панель (компактнее) ---
+        body = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(4))
 
-        # 3D host — основная область (примерно 70% оставшейся высоты)
-        host = BoxLayout(orientation="vertical", size_hint=(1, 0.70))
+        # 3D host — основная область (75% высоты)
+        host = BoxLayout(orientation="vertical", size_hint=(1, 0.75))
         self._viz = Visualizer3D(size_hint=(1, 1))
         host.add_widget(self._viz)
 
-        # Bottom panel — кнопки + шаг/описание (примерно 30%)
-        bottom = BoxLayout(orientation="vertical", size_hint=(1, 0.30), spacing=dp(6))
+        # Bottom panel — кнопки + шаг/описание (25%)
+        bottom = BoxLayout(orientation="vertical", size_hint=(1, 0.25), spacing=dp(4))
 
-        # Controls row (чуть ниже и компактнее)
-        controls = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(8))
+        # Controls row — кнопки управления
+        controls = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46), spacing=dp(6))
 
         bg_ctrl = app.mm_surface2
         bg_play = app.mm_accent
@@ -265,7 +296,9 @@ class ReactionViewerScreen(BaseScreen):
             controls.add_widget(b)
 
         # Step info — занимает остаток нижней панели, описание скроллится
-        step_box = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(4))
+        from kivy.metrics import sp
+        
+        step_box = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(2))
 
         self._lbl_step_title = MDLabel(
             text="",
@@ -274,8 +307,8 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text,
             halign="left",
             size_hint_y=None,
-            height=dp(22),
-            font_size=dp(16),
+            height=dp(20),
+            font_size=sp(14),  # Масштабируемый шрифт
         )
 
         self._lbl_step_desc = MDLabel(
@@ -284,10 +317,15 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text2,
             halign="left",
             valign="top",
+            font_size=sp(13),  # Масштабируемый шрифт
             text_size=(0, None),
+            size_hint_y=None,
         )
+        
+        # Автоматическая высота по контенту
+        self._lbl_step_desc.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1]))
 
-        desc_scroll = MDScrollView(do_scroll_x=False, bar_width=dp(6))
+        desc_scroll = MDScrollView(do_scroll_x=False, bar_width=dp(4))
         desc_scroll.add_widget(self._lbl_step_desc)
 
         step_box.add_widget(self._lbl_step_title)
@@ -377,8 +415,9 @@ class ReactionViewerScreen(BaseScreen):
         idx = max(0, min(self._state.frame_idx, len(self._rxn.frames) - 1))
         fr = self._rxn.frames[idx]
         atoms = fr.atoms
+        groups = None
         try:
-            atoms = self._separate_molecules(fr.atoms, fr.bonds)
+            atoms, groups = self._separate_molecules(fr.atoms, fr.bonds)
         except Exception as e:
             Logger.exception(f"[ReactionViewer] separate_molecules failed: {e}")
 
@@ -387,6 +426,7 @@ class ReactionViewerScreen(BaseScreen):
             bonds=fr.bonds,
             highlight_break=fr.highlight_break,
             highlight_form=fr.highlight_form,
+            groups=groups,  # Передаём группы для независимого вращения
         )
         self._render_step()
 
