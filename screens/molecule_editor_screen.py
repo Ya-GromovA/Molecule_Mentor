@@ -19,7 +19,7 @@ from utils.molecule_parser import MoleculeParseError, molecule_formula, parse_pd
 from utils.visualizer_3d import Visualizer3D
 
 
-# Реагенты для добавления
+# реагенты для добавления
 REAGENTS = {
     "HCl": {"name": "Соляная кислота (HCl)", "atoms": [("H", 0, 0, 0), ("Cl", 1.3, 0, 0)], "bonds": [(0, 1)]},
     "H2SO4": {"name": "Серная кислота (H2SO4)", "atoms": [("S", 0, 0, 0), ("O", 1.4, 0, 0), ("O", -1.4, 0, 0), ("O", 0, 1.4, 0), ("O", 0, -1.4, 0), ("H", 0, 2.4, 0), ("H", 0, -2.4, 0)], "bonds": [(0, 1), (0, 2), (0, 3), (0, 4), (3, 5), (4, 6)]},
@@ -31,13 +31,13 @@ REAGENTS = {
     "CO2": {"name": "Углекислый газ (CO2)", "atoms": [("C", 0, 0, 0), ("O", 1.2, 0, 0), ("O", -1.2, 0, 0)], "bonds": [(0, 1), (0, 2)]},
 }
 
-# База известных реакций: ключ = frozenset формул реагентов, значение = информация о реакции
-# Формат: {reagents_set: {"possible": bool, "min_temp": int, "equation": str, "products": str, "description": str}}
+# база известных реакций
+# формат: {reagents_set: {"possible": bool, "min_temp": int, "equation": str, "products": str, "description": str}}
 KNOWN_REACTIONS = {
-    # Кислота + основание -> соль + вода (нейтрализация)
+    # кислота + основание -> соль + вода (нейтрализация)
     frozenset(["HCl", "NaOH"]): {
         "possible": True,
-        "min_temp": -50,  # идёт при любой температуре
+        "min_temp": -50,  # идёт почти при любой температуре
         "equation": "HCl + NaOH -> NaCl + H2O",
         "products": "хлорид натрия (поваренная соль) и вода",
         "description": "Реакция нейтрализации. Соляная кислота реагирует с гидроксидом натрия, образуя соль и воду.",
@@ -56,15 +56,15 @@ KNOWN_REACTIONS = {
         "products": "нитрат натрия и вода",
         "description": "Реакция нейтрализации азотной кислоты гидроксидом натрия.",
     },
-    # Кислота + спирт -> сложный эфир + вода (этерификация)
+    # кислота + спирт -> эфир + вода (этерификация)
     frozenset(["CH3OH", "HCl"]): {
         "possible": True,
-        "min_temp": 50,  # требует нагрева
+        "min_temp": 50,  # нужна температура
         "equation": "CH3OH + HCl -> CH3Cl + H2O",
         "products": "хлорметан (метилхлорид) и вода",
         "description": "Реакция замещения гидроксильной группы на хлор. Требует нагревания.",
     },
-    # Аммиак + кислота -> соль аммония
+    # аммиак + кислота -> соль аммония
     frozenset(["NH3", "HCl"]): {
         "possible": True,
         "min_temp": -50,
@@ -79,7 +79,7 @@ KNOWN_REACTIONS = {
         "products": "сульфат аммония",
         "description": "Аммиак реагирует с серной кислотой, образуя сульфат аммония — удобрение.",
     },
-    # Вода + ... (обычно не реагирует без катализатора)
+    # вода + ... (обычно без катализатора не реагирует)
     frozenset(["H2O", "CO2"]): {
         "possible": True,
         "min_temp": -50,
@@ -94,7 +94,7 @@ KNOWN_REACTIONS = {
         "products": "гидроксид аммония (нашатырный спирт)",
         "description": "Аммиак хорошо растворяется в воде, образуя слабое основание — нашатырный спирт.",
     },
-    # Метанол + вода — не реагируют химически, только смешиваются
+    # метанол + вода - не реагируют, просто смешиваются
     frozenset(["CH3OH", "H2O"]): {
         "possible": False,
         "min_temp": 0,
@@ -106,13 +106,7 @@ KNOWN_REACTIONS = {
 
 
 class MoleculeEditorScreen(Screen):
-    """
-    Редактор молекул с возможностью:
-    - Удаления атомов/связей по тапу
-    - Создания новых связей между атомами
-    - Регулировки температуры
-    - Добавления реагентов
-    """
+    # редактор молекул: можно удалять атомы, добавлять связи и реагенты
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -124,19 +118,19 @@ class MoleculeEditorScreen(Screen):
         self._highlight_break: list[tuple[int, int]] = []
         self._highlight_form: list[tuple[int, int]] = []
         
-        self._temperature: float = 25.0  # градусов Цельсия
+        self._temperature: float = 25.0  # температура в градусах
         self._message_label: Optional[MDLabel] = None
         self._temp_label: Optional[MDLabel] = None
         self._selected_reagent: Optional[str] = None
         
-        # Режим создания связей (по умолчанию выключен — режим удаления)
+        # режим создания связей (если False - удаляем)
         self._bond_mode: bool = False
         self._first_atom_idx: Optional[int] = None
         
-        # Список добавленных реагентов (для определения реакции)
+        # список добавленных реагентов
         self._added_reagents: list[str] = []
         
-        # Флаг добавления реагента (для кнопки "Запустить")
+        # флаг для кнопки "Запустить"
         self._reagent_added: bool = False
 
     @property
@@ -191,7 +185,7 @@ class MoleculeEditorScreen(Screen):
 
         host.clear_widgets()
 
-        # Контейнер для 3D-вьювера
+        # контейнер для 3D-вьювера
         card = BoxLayout(
             orientation="vertical",
             padding=[dp(10), dp(10), dp(10), dp(10)],
@@ -207,7 +201,7 @@ class MoleculeEditorScreen(Screen):
         )
 
         self._viewer = Visualizer3D()
-        # Включаем режим редактирования
+        # включаем режим редактирования
         self._viewer.edit_mode = True
         self._viewer.on_atom_tap = self._on_atom_tap
         self._viewer.on_bond_tap = self._on_bond_tap
@@ -215,7 +209,7 @@ class MoleculeEditorScreen(Screen):
         card.add_widget(self._viewer)
         host.add_widget(card)
 
-        # Сбрасываем температуру и флаги
+        # сбрасываем температуру и флаги
         self._temperature = 25.0
         self._highlight_break = []
         self._highlight_form = []
@@ -236,16 +230,16 @@ class MoleculeEditorScreen(Screen):
         if atom_idx < 0 or atom_idx >= len(self._current_atoms):
             return
         
-        # Режим создания связей
+        # режим создания связей
         if self._bond_mode:
             self._handle_bond_mode_tap(atom_idx)
             return
         
-        # Режим удаления (по умолчанию)
+        # режим удаления (по умолчанию)
         atom = self._current_atoms[atom_idx]
         element = atom.element
         
-        # Удаляем атом и все связанные с ним связи
+        # удаляем атом и все его связи
         new_atoms = []
         old_to_new: dict[int, int] = {}
         
@@ -272,25 +266,25 @@ class MoleculeEditorScreen(Screen):
     def _handle_bond_mode_tap(self, atom_idx: int) -> None:
         """Обработка тапа в режиме создания связей."""
         if self._first_atom_idx is None:
-            # Первый атом выбран
+            # первый атом выбран
             self._first_atom_idx = atom_idx
             atom = self._current_atoms[atom_idx]
             self._show_message(f"Выбран {atom.element}. Тапните второй атом")
         else:
-            # Второй атом выбран — создаём связь
+            # второй атом выбран - создаём связь
             if self._first_atom_idx == atom_idx:
                 self._show_message("Нельзя связать атом с самим собой")
                 self._first_atom_idx = None
                 return
             
-            # Проверяем, нет ли уже такой связи
+            # проверяем, нет ли уже такой связи
             bond = (min(self._first_atom_idx, atom_idx), max(self._first_atom_idx, atom_idx))
             if bond in self._current_bonds:
                 self._show_message("Связь уже существует")
                 self._first_atom_idx = None
                 return
             
-            # Создаём связь
+            # создаём связь
             self._current_bonds.append(bond)
             self._highlight_form.append(bond_key(bond[0], bond[1]))
             
@@ -302,7 +296,7 @@ class MoleculeEditorScreen(Screen):
             self._update_viewer()
             self._update_info()
             
-            # Убираем подсветку через 1.5 секунды
+            # убираем подсветку через 1.5 секунды
             def clear_highlight(*_):
                 self._highlight_form = []
                 self._update_viewer()
@@ -311,10 +305,10 @@ class MoleculeEditorScreen(Screen):
     def _on_bond_tap(self, bond: tuple[int, int]) -> None:
         """Обработка тапа по связи — удаление (в режиме удаления)."""
         if self._bond_mode:
-            # В режиме связывания тап по связи ничего не делает
+            # в режиме связывания тап по связи ничего не делает
             return
         
-        # Режим удаления
+        # режим удаления
         if bond in self._current_bonds:
             self._current_bonds.remove(bond)
         elif (bond[1], bond[0]) in self._current_bonds:
@@ -356,7 +350,7 @@ class MoleculeEditorScreen(Screen):
         msg_label = self.ids.get("message_label")
         if msg_label:
             msg_label.text = text
-            # Очищаем через 3 секунды
+            # очищаем через 3 секунды
             Clock.unschedule(self._clear_message)
             Clock.schedule_once(self._clear_message, 3.0)
 
@@ -379,18 +373,18 @@ class MoleculeEditorScreen(Screen):
         if not temp_slider:
             return
         
-        # Нормализуем температуру: -200..500 -> 0..1
+        # нормализуем температуру: -200..500 -> 0..1
         t = (self._temperature + 200) / 700  # 0 = -200°C, 1 = 500°C
         
-        # Интерполяция цвета: синий -> белый -> красный
+        # цвет по температуре: синий -> белый -> красный
         if t < 0.32:  # холодно (-200 до ~25°C)
-            # Синий (0.2, 0.5, 0.95) -> белый
+            # синий -> белый
             ratio = t / 0.32
             r = 0.2 + ratio * 0.8
             g = 0.5 + ratio * 0.5
             b = 0.95
         else:  # тепло/жарко (>25°C)
-            # Белый -> красный (0.95, 0.3, 0.2)
+            # белый -> красный
             ratio = (t - 0.32) / 0.68
             r = 0.95
             g = 1.0 - ratio * 0.7
@@ -398,14 +392,14 @@ class MoleculeEditorScreen(Screen):
         
         color = (r, g, b, 1)
         
-        # Устанавливаем цвет трека слайдера (KivyMD 2.x)
+        # цвет трека слайдера
         try:
             temp_slider.track_active_color = color
             temp_slider.thumb_color = color
         except Exception:
-            pass  # Если свойства не поддерживаются
+            pass  # если свойства не поддерживаются
         
-        # Цвет лейбла температуры
+        # цвет лейбла температуры
         if temp_label:
             temp_label.text_color = color
 
@@ -414,11 +408,11 @@ class MoleculeEditorScreen(Screen):
         if not self._current_bonds:
             return
         
-        # При высокой температуре (>100°C) есть шанс разрыва связи
+        # при высокой температуре (>100°C) есть шанс разрыва связи
         if self._temperature > 100:
             break_chance = (self._temperature - 100) / 500  # 0-0.8 при 100-500°C
             if random.random() < break_chance and self._current_bonds:
-                # Выбираем случайную связь
+                # выбираем случайную связь
                 bond_idx = random.randint(0, len(self._current_bonds) - 1)
                 broken = self._current_bonds.pop(bond_idx)
                 self._highlight_break.append(bond_key(broken[0], broken[1]))
@@ -426,7 +420,7 @@ class MoleculeEditorScreen(Screen):
                 self._update_info()
                 self._show_message(f"Связь разорвана при {self._temperature:.0f}°C!")
         
-        # При очень низкой температуре (<-50°C) молекула "замерзает"
+        # при очень низкой температуре (<-50°C) молекула "замерзает"
         elif self._temperature < -50:
             self._show_message(f"Молекула заморожена при {self._temperature:.0f}°C")
 
@@ -446,7 +440,7 @@ class MoleculeEditorScreen(Screen):
         """Обновляет текст кнопки режима."""
         mode_label = self.ids.get("mode_label")
         if mode_label:
-            # Текст показывает, что МОЖНО сделать (переключиться на другой режим)
+            # текст показывает что можно сделать
             if self._bond_mode:
                 mode_label.text = "Удалять"
             else:
@@ -464,7 +458,7 @@ class MoleculeEditorScreen(Screen):
         self._reagent_added = False
         self._added_reagents = []
         
-        # Обновляем слайдер
+        # обновляем слайдер
         temp_slider = self.ids.get("temp_slider")
         if temp_slider:
             temp_slider.value = 25.0
@@ -485,7 +479,7 @@ class MoleculeEditorScreen(Screen):
 
         formula = molecule_formula(self._current_atoms)
         
-        # Подсчитываем атомы для более детального анализа
+        # считаем атомы для более детального анализа
         atom_counts: dict[str, int] = {}
         for atom in self._current_atoms:
             atom_counts[atom.element] = atom_counts.get(atom.element, 0) + 1
@@ -509,7 +503,7 @@ class MoleculeEditorScreen(Screen):
 
         def work():
             try:
-                # verify=False — отключаем верификатор для коротких запросов анализа
+                # verify=False - отключаем верификатор для коротких запросов
                 answer = self.app._ai_engine.ask(prompt, verify=False)
                 Clock.schedule_once(lambda *_: self._show_ai_result(answer), 0)
             except Exception as e:
@@ -560,6 +554,7 @@ class MoleculeEditorScreen(Screen):
             caller=reagent_btn,
             items=menu_items,
             width=min(dp(320), Window.width - dp(24)),
+            position="center",
         )
         self._reagent_menu.open()
 
@@ -577,40 +572,40 @@ class MoleculeEditorScreen(Screen):
         
         reagent = REAGENTS[reagent_key]
         
-        # Вычисляем смещение для нового реагента
+        # считаем смещение для нового реагента
         if self._current_atoms:
             max_x = max(a.x for a in self._current_atoms)
             offset_x = max_x + 3.0
         else:
             offset_x = 0.0
         
-        # Добавляем атомы реагента
+        # добавляем атомы реагента
         base_idx = len(self._current_atoms)
         for (element, x, y, z) in reagent["atoms"]:
             new_atom = Atom(element=element, x=x + offset_x, y=y, z=z)
             self._current_atoms.append(new_atom)
         
-        # Добавляем связи реагента
+        # добавляем связи реагента
         for (i, j) in reagent["bonds"]:
             self._current_bonds.append((base_idx + i, base_idx + j))
-            # Подсвечиваем новые связи
+            # подсвечиваем новые связи
             self._highlight_form.append(bond_key(base_idx + i, base_idx + j))
         
         self._update_viewer()
         self._update_info()
         
-        # Запоминаем добавленный реагент
+        # запоминаем добавленный реагент
         self._added_reagents.append(reagent_key)
         
-        # Короткое имя реагента
+        # короткое имя реагента
         short_name = reagent_key
         self._show_message(f"+ {short_name}")
         
-        # Показываем кнопку "Запустить процесс"
+        # показываем кнопку "Запустить процесс"
         self._reagent_added = True
         self._update_run_button()
         
-        # Убираем подсветку через 1.5 секунды
+        # убираем подсветку через 1.5 секунды
         def clear_highlight(*_):
             self._highlight_form = []
             self._update_viewer()
@@ -651,10 +646,12 @@ class MoleculeEditorScreen(Screen):
             if self._reagent_added:
                 run_btn.opacity = 1
                 run_btn.height = dp(32)
+                run_btn.width = dp(172)
                 run_btn.disabled = False
             else:
                 run_btn.opacity = 0
                 run_btn.height = dp(0)
+                run_btn.width = dp(0)
                 run_btn.disabled = True
 
     def run_reaction(self) -> None:
@@ -665,15 +662,15 @@ class MoleculeEditorScreen(Screen):
         
         self._show_message("Анализирую реакцию...")
         
-        # Проверяем, есть ли известная реакция в базе
+        # проверяем, есть ли известная реакция в базе
         reagent_set = frozenset(self._added_reagents)
         known = KNOWN_REACTIONS.get(reagent_set)
         
         if known:
-            # Известная реакция — проверяем условия
+            # известная реакция - проверяем условия
             self._run_known_reaction(known)
         else:
-            # Неизвестная комбинация — спрашиваем ИИ
+            # неизвестная комбинация - спрашиваем ИИ
             self._run_unknown_reaction()
     
     def _run_known_reaction(self, reaction_info: dict) -> None:
@@ -685,7 +682,7 @@ class MoleculeEditorScreen(Screen):
         description = reaction_info.get("description", "")
         
         if not possible:
-            # Реакция невозможна — показываем сообщение без анимации
+            # реакция невозможна - показываем сообщение без анимации
             self._show_reaction_result(
                 f"Реакция невозможна.\n\n{description}",
                 title="Реакция не идёт"
@@ -693,7 +690,7 @@ class MoleculeEditorScreen(Screen):
             return
         
         if self._temperature < min_temp:
-            # Температура слишком низкая
+        # температура слишком низкая
             self._show_reaction_result(
                 f"Реакция возможна, но требует температуры выше {min_temp}°C.\n"
                 f"Текущая температура: {self._temperature:.0f}°C.\n\n"
@@ -702,15 +699,15 @@ class MoleculeEditorScreen(Screen):
             )
             return
         
-        # Реакция идёт — запускаем анимацию
+        # реакция идёт - запускаем анимацию
         self._show_message("Реакция идёт!")
         self._animate_reaction(equation, products, description)
     
     def _animate_reaction(self, equation: str, products: str, description: str) -> None:
         """Анимация реакции: разрыв связей, перегруппировка, образование новых связей."""
-        # Фаза 1: Подсветка разрывающихся связей (красным)
+        # фаза 1: подсветка разрывающихся связей (красным)
         if self._current_bonds:
-            # Выбираем случайные связи для разрыва (30-50% связей)
+            # выбираем случайные связи для разрыва (30-50% связей)
             import random
             num_to_break = max(1, len(self._current_bonds) // 3)
             bonds_to_break = random.sample(self._current_bonds, min(num_to_break, len(self._current_bonds)))
@@ -718,10 +715,10 @@ class MoleculeEditorScreen(Screen):
             self._highlight_break = [bond_key(b[0], b[1]) for b in bonds_to_break]
             self._update_viewer()
         
-        # Фаза 2: Через 0.8 сек — удаляем разорванные связи
+        # фаза 2: через 0.8 сек удаляем разорванные связи
         def phase2(*_):
             for b in list(self._highlight_break):
-                # Удаляем связь из текущих
+                # удаляем связь из текущих
                 bond = b if b in self._current_bonds else (b[1], b[0])
                 if bond in self._current_bonds:
                     self._current_bonds.remove(bond)
@@ -734,35 +731,35 @@ class MoleculeEditorScreen(Screen):
         
         Clock.schedule_once(phase2, 0.8)
         
-        # Фаза 3: Через 1.5 сек — образование новых связей (зелёным)
+        # фаза 3: через 1.5 сек образуем новые связи (зелёным)
         def phase3(*_):
-            # Находим близкие атомы без связей и соединяем их
+            # ищем близкие атомы без связей и соединяем
             new_bonds_formed = []
             for i, atom_i in enumerate(self._current_atoms):
                 for j, atom_j in enumerate(self._current_atoms):
                     if i >= j:
                         continue
-                    # Проверяем, нет ли уже связи
+                    # проверяем, нет ли уже связи
                     bond = (min(i, j), max(i, j))
                     if bond in self._current_bonds:
                         continue
                     
-                    # Вычисляем расстояние
+                    # считаем расстояние
                     dist = ((atom_i.x - atom_j.x)**2 + (atom_i.y - atom_j.y)**2 + (atom_i.z - atom_j.z)**2) ** 0.5
                     
-                    # Если атомы близко (< 2.5 ангстрем) — создаём связь
+                    # если атомы близко (< 2.5 ангстрем) - создаём связь
                     if dist < 2.5 and len(new_bonds_formed) < 3:
                         self._current_bonds.append(bond)
                         new_bonds_formed.append(bond)
             
-            # Подсвечиваем новые связи
+            # подсвечиваем новые связи
             self._highlight_form = [bond_key(b[0], b[1]) for b in new_bonds_formed]
             self._update_viewer()
             self._update_info()
         
         Clock.schedule_once(phase3, 1.5)
         
-        # Фаза 4: Через 2.5 сек — показываем результат
+        # фаза 4: через 2.5 сек показываем результат
         def phase4(*_):
             self._highlight_form = []
             self._highlight_break = []
@@ -777,7 +774,7 @@ class MoleculeEditorScreen(Screen):
         """Спрашиваем ИИ о неизвестной реакции."""
         formula = molecule_formula(self._current_atoms)
         
-        # Подсчитываем атомы
+        # считаем атомы
         atom_counts: dict[str, int] = {}
         for atom in self._current_atoms:
             atom_counts[atom.element] = atom_counts.get(atom.element, 0) + 1
@@ -806,10 +803,10 @@ class MoleculeEditorScreen(Screen):
             try:
                 answer = self.app._ai_engine.ask(prompt, verify=False)
                 
-                # Проверяем качество ответа
+                # проверяем качество ответа
                 answer_lower = answer.lower()
                 
-                # Признаки того, что ИИ не знает ответа
+                # признаки что ИИ не знает ответа
                 is_unknown = (
                     "не знаю" in answer_lower or
                     "недостаточно" in answer_lower or
@@ -819,10 +816,10 @@ class MoleculeEditorScreen(Screen):
                     len(answer.strip()) < 20
                 )
                 
-                # Признаки повторяющегося текста (галлюцинация)
+                # признаки повторяющегося текста (галлюцинация)
                 words = answer.split()
                 if len(words) > 20:
-                    # Проверяем, есть ли повторяющиеся фразы
+                    # проверяем, есть ли повторяющиеся фразы
                     phrase_counts = {}
                     for i in range(len(words) - 4):
                         phrase = " ".join(words[i:i+5])
@@ -830,7 +827,7 @@ class MoleculeEditorScreen(Screen):
                     if any(count > 2 for count in phrase_counts.values()):
                         is_unknown = True
                 
-                # Определяем результат
+                # определяем результат
                 if is_unknown:
                     title = "Результат неизвестен"
                     result_text = (
@@ -849,7 +846,7 @@ class MoleculeEditorScreen(Screen):
                 ):
                     title = "Реакция возможна"
                     result_text = answer
-                    # Показываем анимацию только для возможных реакций
+                    # показываем анимацию только для возможных реакций
                     Clock.schedule_once(lambda *_: self._simple_reaction_animation(), 0)
                 else:
                     title = "Результат анализа"
@@ -879,7 +876,7 @@ class MoleculeEditorScreen(Screen):
         if not self._current_bonds:
             return
         
-        # Разрываем 1-2 случайные связи
+        # разрываем 1-2 случайные связи
         num_to_break = min(2, len(self._current_bonds))
         bonds_to_break = random.sample(self._current_bonds, num_to_break)
         
@@ -921,7 +918,7 @@ class MoleculeEditorScreen(Screen):
         )
         dialog.open()
         
-        # Сбрасываем флаги
+        # сбрасываем флаги
         self._reagent_added = False
         self._added_reagents = []
         self._update_run_button()

@@ -21,7 +21,7 @@ android.presplash_color = #000000
 icon.adaptive_foreground.filename = assets/icons/app_icon.png
 icon.adaptive_background.filename = assets/icons/app_icon.png
 
-android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,WAKE_LOCK
 
 ; Кастомный манифест с отключенным hardware acceleration (исправляет краш HWUI mutex)
 android.manifest = android_manifest.xml

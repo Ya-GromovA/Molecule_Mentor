@@ -28,13 +28,9 @@ class Diagnose:
 
 
 class AIEngine:
-    """
-    Dual-mode AI:
-      - Online: HuggingFace Router /v1/chat/completions
-      - Offline: llama_cpp create_chat_completion
-
-    ВАЖНО: ask() синхронный — вызывать ТОЛЬКО из фонового потока.
-    """
+    # движок для работы с ИИ
+    # может работать через интернет (HuggingFace) или локально (llama_cpp)
+    # метод ask() блокирующий - вызывать только из фонового потока!
 
     def __init__(self, hf_token_path: str, offline_model_path: str):
         self.hf_token_path = hf_token_path
@@ -51,18 +47,18 @@ class AIEngine:
         self._online_err = ""
         self._online_ok = False
 
-        # In-memory cache для retrieval (без файлов)
+        # кеш для загруженных фактов (чтобы не качать каждый раз)
         self._retrieval_cache: Dict[str, Tuple[float, str, list[str]]] = {}
-        self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))  # 24ч
+        self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))  # 24 часа
 
         self._stop = False
         self._health_thread = threading.Thread(target=self._health_loop, daemon=True)
         self._health_thread.start()
 
-    # -------- public API --------
+    # -------- внешние методы --------
     def stop(self) -> None:
         self._stop = True
-        # Ждём завершения health thread, чтобы избежать use-after-free
+        # ждём пока фоновый поток завершится
         if self._health_thread and self._health_thread.is_alive():
             self._health_thread.join(timeout=2.0)
 
@@ -71,10 +67,8 @@ class AIEngine:
             return self._mode
 
     def set_offline_model_path(self, path: str) -> None:
-        """
-        Можно вызвать после того как модель будет подготовлена/склеена.
-        Сбрасываем кэш Llama, чтобы при следующем запросе модель загрузилась с нового пути.
-        """
+        # устанавливаем путь к оффлайн модели
+        # сбрасываем кеш чтобы подгрузилась с нового места
         with self._lock:
             self.offline_model_path = path
             self._llama = None
@@ -105,14 +99,14 @@ class AIEngine:
             last_switch_ts=last_switch,
         )
 
-    # -------- language control --------
+    # -------- контроль языка --------
     _RE_LATIN_ANY = re.compile(r"[A-Za-z]")
     _RE_FORMULA_TOKEN = re.compile(r"^(?:[A-Z][a-z]?\d*){1,12}[+-]?$")
 
-    # Разрешим органическую запись типа R-COOH, R'-OH, R-COO-R' (иначе будет считаться “английским”)
-    _RE_ORGANIC_TOKEN = re.compile(r"^(?:R|R'|R’)(?:[A-Za-z0-9'’+\-()]{0,32})$")
+    # разрешаем органику типа R-COOH, R'-OH
+    _RE_ORGANIC_TOKEN = re.compile(r"^(?:R|R'|R')(?:[A-Za-z0-9''+\-()]{0,32})$")
 
-    # Принудительная замена “упрямых” английских слов на русские
+    # заменяем английские слова на русские
     FORCED_RU_TERMS = {
         "and/or": "и/или",
         "and": "и",
@@ -132,7 +126,7 @@ class AIEngine:
         "ionic": "ионный",
     }
     
-    # Исправление типичных опечаток модели (галлюцинации/ошибки токенизации)
+    # фиксы опечаток которые модель часто делает
     TYPO_FIXES = {
         "спиры": "спирты",
         "спиров": "спиртов",
@@ -144,7 +138,7 @@ class AIEngine:
         "кислоы": "кислоты",
     }
 
-    # -------- prompts --------
+    # -------- промпты для модели --------
     def _system_prompt_ru(self, is_offline: bool = False) -> str:
         base = (
             "Ты — эксперт по химии для школьников 7–11 классов.\n"
@@ -192,11 +186,9 @@ class AIEngine:
             "Русский язык обязателен, латиница — только в формулах (и R-обозначениях органики).\n"
         )
 
-    # -------- retrieval (internet facts) --------
+    # -------- поиск фактов в интернете --------
     def _is_chem_query(self, text: str) -> bool:
-        """
-        Широкий фильтр: если похоже на учебный химический вопрос — включаем retrieval (в ONLINE).
-        """
+        # проверяем похож ли вопрос на химический
         t = (text or "").strip().lower()
         if not t:
             return False
@@ -213,11 +205,8 @@ class AIEngine:
         return any(x in t for x in triggers)
 
     def _extract_term_ru(self, text: str) -> str:
-        """
-        Извлекаем "термин" для поиска источников.
-        Для "перечисли спирты" -> "спирты"
-        Для "как писать структурные формулы" -> "структурная формула" / "структурные формулы"
-        """
+        # вытаскиваем термин для поиска
+        # например "перечисли спирты" -> "спирты"
         t = (text or "").strip().lower()
         t = re.sub(r"[^\w\s\-ёЁа-яА-Я]", " ", t)
         t = re.sub(r"\s{2,}", " ", t).strip()
@@ -225,7 +214,7 @@ class AIEngine:
         if not t:
             return ""
 
-        # убираем частые служебные слова/глаголы
+        # убираем всякие "расскажи", "что такое" и т.д.
         stop_prefixes = (
             "объясни", "расскажи", "что такое", "что значит", "дай определение", "определи",
             "перечисли", "назови", "приведи", "покажи", "как", "почему", "зачем",
@@ -235,7 +224,7 @@ class AIEngine:
             if t.startswith(sp + " "):
                 t = t[len(sp):].strip()
 
-        # вычищаем стоп-слова внутри
+        # убираем мусорные слова
         stop_words = {
             "пожалуйста", "мне", "про", "о", "об", "это", "такое", "значит",
             "на", "в", "и", "или", "что", "как", "какие", "какой", "в", "для",
@@ -245,7 +234,7 @@ class AIEngine:
         if not parts:
             return ""
 
-        # берём последние 1–2 слова — чаще всего там и термин ("перечисли спирты" -> "спирты")
+        # берём последние 1-2 слова - там обычно и термин
         tail = parts[-2:] if len(parts) > 1 else parts[-1:]
         return " ".join(tail).strip()
 
@@ -259,9 +248,7 @@ class AIEngine:
             return None
 
     def _fetch_wikipedia_ru_summary(self, term: str, timeout_sec: float = 6.0) -> Tuple[str, str]:
-        """
-        ru.wikipedia REST summary: (title, extract)
-        """
+        # качаем краткое описание из википедии
         if not term:
             return "", ""
         url = f"https://ru.wikipedia.org/api/rest_v1/page/summary/{quote(term)}"
@@ -273,10 +260,7 @@ class AIEngine:
         return title, extract
 
     def _fetch_pubchem_basic(self, term: str, timeout_sec: float = 7.0) -> Dict[str, str]:
-        """
-        PubChem PUG REST: формула и IUPAC name (для веществ).
-        Если термин не вещество — просто вернёт пустые поля.
-        """
+        # качаем формулу и IUPAC название из PubChem
         if not term:
             return {"formula": "", "iupac": ""}
 
@@ -299,10 +283,7 @@ class AIEngine:
         }
 
     def _build_retrieved_context_ru(self, term: str) -> Tuple[str, list[str]]:
-        """
-        Возвращает (context_text, sources_list).
-        context_text — короткая выжимка фактов.
-        """
+        # собираем факты из разных источников
         if not term:
             return "", []
 
@@ -336,7 +317,7 @@ class AIEngine:
         self._retrieval_cache[key] = (now, ctx, sources)
         return ctx, sources
 
-    # -------- text normalization for Kivy fonts --------
+    # -------- нормализация текста для Kivy --------
     _SUBSCRIPT_MAP = str.maketrans({
         "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
         "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
@@ -348,13 +329,12 @@ class AIEngine:
     })
 
     def _normalize_for_kivy_font(self, text: str) -> str:
-        """
-        Убираем/заменяем символы, которые часто рендерятся квадратиками в Kivy.
-        """
+        # заменяем всякие юникодные символы на обычные
+        # потому что в Kivy они показываются квадратиками
         if not text:
             return ""
 
-        # стрелки/мат.символы -> ascii
+        # заменяем стрелки и математические символы
         replacements = {
             "⇌": "<->",
             "↔": "<->",
@@ -388,11 +368,9 @@ class AIEngine:
 
         return text
 
-    # -------- postprocessing --------
+    # -------- обработка ответов --------
     def _needs_russian_rewrite(self, answer: str) -> bool:
-        """
-        True если в ответе есть латиница НЕ как химическая формула/органическая запись.
-        """
+        # проверяем что нет английских слов
         if not answer:
             return False
 
@@ -407,15 +385,15 @@ class AIEngine:
             if not self._RE_LATIN_ANY.search(tok):
                 continue
 
-            # разрешаем чистые формулы типа NaOH, H2O
+            # разрешаем формулы типа NaOH, H2O
             if self._RE_FORMULA_TOKEN.fullmatch(tok):
                 continue
 
-            # разрешаем органические R-обозначения (R-COOH и т.п.)
+            # разрешаем органику типа R-COOH
             if self._RE_ORGANIC_TOKEN.fullmatch(tok):
                 continue
 
-            # разрешаем отдельные обозначения элементов/параметров
+            # разрешаем отдельные обозначения элементов
             if tok in {
                 "pH", "Na", "Cl", "Fe", "Cu", "Zn", "Ag", "Au", "Hg",
                 "Pb", "Sn", "Al", "Si", "Ca", "K", "Li", "Mg",
@@ -441,12 +419,12 @@ class AIEngine:
         return text
     
     def _fix_typos(self, text: str) -> str:
-        """Исправляет типичные опечатки модели (спиры -> спирты и т.п.)."""
+        # исправляем опечатки типа "спиры"
         if not text:
             return text
         
         for typo, fix in self.TYPO_FIXES.items():
-            # Регистронезависимая замена с сохранением регистра первой буквы
+            # регистронезависимая замена с сохранением первой буквы
             pattern = re.compile(re.escape(typo), re.IGNORECASE)
             def replace_match(m):
                 matched = m.group(0)
@@ -458,11 +436,8 @@ class AIEngine:
         return text
 
     def _fix_cyrillic_confusables(self, text: str) -> str:
-        """
-        Исправляем латинские "похожие" буквы, если они встретились ВНУТРИ кириллического слова.
-        Пример: Vензол -> Бензол, cреда -> среда.
-        Также очищаем от мусорных символов.
-        """
+        # если внутри слова попалась латиница, меняем на русские буквы
+        # например Vензол -> Бензол
         if not text:
             return ""
 
@@ -495,7 +470,7 @@ class AIEngine:
             text,
         )
 
-        # Дополнительная очистка от странных символов (оставляем только ASCII, кириллицу и базовые символы)
+        # чистим совсем странные символы
         allowed_chars = r"\x00-\x7F\u0400-\u04FF\s.,;:!?(){}\"'/\\|+<>=\-\[\]_"
         text = re.sub(r"[^" + allowed_chars + r"]", "", text)
 
@@ -516,7 +491,7 @@ class AIEngine:
                 cleaned.append(ch)
                 continue
 
-            # контрольные + суррогаты
+            # убираем технические символы
             if code < 32 or (0xD800 <= code <= 0xDFFF):
                 continue
 
@@ -524,7 +499,7 @@ class AIEngine:
 
         text = "".join(cleaned)
 
-        # убираем zero-width и soft-hyphen
+        # убираем невидимые символы
         text = text.translate(
             {
                 0x200B: None,
@@ -537,30 +512,26 @@ class AIEngine:
             }
         )
 
-        # Убираем повторяющиеся пробелы
+        # убираем лишние пробелы
         text = re.sub(r"[ \t]{2,}", " ", text).strip()
         
-        # Убираем пустые строки
+        # выкидываем пустые строки
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         text = "\n".join(lines)
         
         return text
     
     def _is_answer_quality_good(self, text: str) -> bool:
-        """
-        Проверяет качество ответа. Возвращает False если ответ подозрительный.
-        """
+        # проверяем что ответ не пустой и без мусора
         if not text or len(text.strip()) < 20:
             return False
         
-        # Проверка на наличие смешанных скриптов (латиница и кириллица в словах)
-        # Если есть слово с перемешанными скриптами (например "Срirты") - плохо
+        # если в слове смешаны кириллица и латиница - плохо
         mixed_script_pattern = re.compile(r'[А-Яа-яЁё][A-Za-z]{2,}|[A-Za-z]{2,}[А-Яа-яЁё]')
         if mixed_script_pattern.search(text):
             return False
         
-        # Проверка на наличие некорректных химических утверждений
-        # Например: "Спирты - это неорганические соединения"
+        # ловим грубые ошибки по химии
         wrong_statements = [
             r'спирт.*неорганическ',
             r'альдегид.*неорганическ',
@@ -573,13 +544,9 @@ class AIEngine:
         
         return True
 
-    # -------- main --------
+    # -------- основной метод --------
     def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 45, verify: bool = True) -> str:
-        """
-        Синхронный метод. Вызывать только из фонового потока.
-        history: [{"role":"user|assistant|system","content":"..."}]
-        verify: если False — пропускаем этап верификатора (для коротких запросов)
-        """
+        # главный метод для запроса к ИИ
         history = history or []
         text = (text or "").strip()
         if not text:
@@ -587,7 +554,7 @@ class AIEngine:
 
         m = self.mode()
 
-        # --- Retrieval: в ONLINE и OFFLINE ---
+        # если вопрос похож на химический - подтягиваем факты
         retrieved_ctx = ""
         retrieved_sources: list[str] = []
         strict_sources = os.environ.get("MM_STRICT_SOURCES", "0").strip().lower() not in ("0", "false", "no")
@@ -596,7 +563,7 @@ class AIEngine:
             term = self._extract_term_ru(text)
             retrieved_ctx, retrieved_sources = self._build_retrieved_context_ru(term)
 
-            # Важно: если вопрос химический, а источники не найдены — НЕ отвечаем выдумкой (только в strict режиме)
+            # если в строгом режиме и источников нет - не отвечаем выдумкой
             if strict_sources and not retrieved_ctx:
                 return (
                     "Не нашла подтверждённых данных в источниках. "
@@ -604,12 +571,12 @@ class AIEngine:
                     f"Что искала: «{term}»"
                 )
 
-        # ЕДИНЫЙ system prompt живёт здесь (не в UI)
+        # системный промпт живёт здесь, не в интерфейсе
         is_offline = m == "OFFLINE"
         base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
         base_messages.extend(history[-20:])
 
-        # Если есть факты — запрещаем добавлять что-то сверх них
+        # если есть факты - запрещаем придумывать своё
         if retrieved_ctx:
             base_messages.append(
                 {
@@ -646,7 +613,7 @@ class AIEngine:
                 except Exception as e:
                     return f"Оффлайн-модель временно недоступна: {str(e)[:100]}"
 
-            # Режим N/A — пробуем оффлайн как последний шанс
+            # если режим N/A - пробуем оффлайн как последний шанс
             try:
                 return self._ask_offline(messages)
             except Exception:
@@ -654,19 +621,19 @@ class AIEngine:
 
         answer = (do_call(base_messages) or "").strip()
 
-        # Если был retrieval, но ответ пуст — не выдумываем
+        # если были факты, но ответ пуст - не выдумываем
         if retrieved_ctx and not answer:
             return (
                 "Нашла данные в источниках, но не смогла сформировать ответ. "
                 "Попробуй задать вопрос короче."
             )
 
-        # Переписывание на русском (до 3 попыток), если проскочила латиница или ответ некачественный
+        # переписываем ответ на русском, если проскочила латиница
         for attempt in range(3):
             if self._is_answer_quality_good(answer) and not self._needs_russian_rewrite(answer):
                 break
             
-            # Если после 2 попыток все еще плохо - используем фоллбэк ответ
+            # если совсем плохо - отдаём фоллбэк
             if attempt >= 2 and not self._is_answer_quality_good(answer):
                 answer = "К сожалению, я не смог дать корректный ответ на этот вопрос. Попробуйте переформулировать вопрос или задать другой."
                 break
@@ -692,7 +659,7 @@ class AIEngine:
             else:
                 break
 
-        # Верификатор (можно отключить MM_AI_VERIFY=0 или параметром verify=False)
+        # проверка ответа ещё одной моделью (можно отключить)
         verify_enabled = verify and os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
         if verify_enabled and answer:
             verify_messages = [
@@ -703,7 +670,7 @@ class AIEngine:
             if verified:
                 answer = verified
 
-        # Финальные фильтры
+        # финальная чистка
         answer = self._force_ru_terms(answer)
         answer = self._fix_typos(answer)  # спиры -> спирты и т.п.
         answer = self._sanitize_for_ui(answer)
@@ -714,7 +681,7 @@ class AIEngine:
 
         return answer
 
-    # -------- internals --------
+    # -------- внутренние методы --------
     def _switch(self, mode: str) -> None:
         with self._lock:
             if self._mode != mode:
@@ -752,10 +719,11 @@ class AIEngine:
         try:
             from llama_cpp import Llama  # type: ignore
 
+            default_threads = max(4, (os.cpu_count() or 4))
             llm = Llama(
                 model_path=self.offline_model_path,
                 n_ctx=int(os.environ.get("LLAMA_N_CTX", "2048")),
-                n_threads=int(os.environ.get("LLAMA_THREADS", "4")),
+                n_threads=int(os.environ.get("LLAMA_THREADS", str(default_threads))),
                 n_gpu_layers=int(os.environ.get("LLAMA_GPU_LAYERS", "0")),
                 verbose=False,
             )
@@ -820,12 +788,7 @@ class AIEngine:
             return json.dumps(data)[:800]
 
     def _health_loop(self) -> None:
-        """
-        Авто-переключение:
-          - если есть интернет и токен -> ONLINE
-          - иначе если есть оффлайн модель и llama_cpp -> OFFLINE
-          - иначе N/A
-        """
+        # следим за интернетом и моделью, чтобы переключать режим
         while not self._stop:
             if not hasattr(self, "_internet_fail_streak"):
                 self._internet_fail_streak = 0
@@ -841,7 +804,7 @@ class AIEngine:
                     self._internet_ok_cached = True
                 else:
                     self._internet_fail_streak += 1
-                    # Быстрое переключение: 1 неудача = сразу offline
+                    # быстро переключаемся если интернета нет
                     if self._internet_fail_streak >= 1:
                         self._internet_ok_cached = False
 
@@ -873,4 +836,4 @@ class AIEngine:
                     self._online_err = str(e)
                 self._switch("N/A")
 
-            time.sleep(5.0)  # Проверяем чаще для быстрой реакции на потерю связи
+            time.sleep(5.0)  # проверяем часто чтобы быстро переключаться

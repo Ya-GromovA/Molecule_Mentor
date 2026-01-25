@@ -76,7 +76,7 @@ class ReactionsScreen(BaseScreen):
         repo = ReactionRepo(app.reactions_dir)
         items = repo.list_reactions()
 
-        # root with dark background like Molecules screen
+        # корень с тёмным фоном как в Molecules
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
 
         bg_rgba = getattr(app, "mm_bg", None) or getattr(app, "mm_surface", None) or (0.06, 0.07, 0.09, 1)
@@ -115,7 +115,7 @@ class ReactionsScreen(BaseScreen):
         root.add_widget(scroll)
         self.add_widget(root)
 
-        # styles like molecule cards
+        # стили как у карточек молекул
         card_bg = getattr(app, "mm_molecules_card_bg", (0.10, 0.11, 0.14, 1))
         border = getattr(app, "mm_molecules_card_border", (1, 1, 1, 0.16))
         pressed_delta = float(getattr(app, "mm_molecules_card_pressed_delta", 0.08))
@@ -192,7 +192,7 @@ class ReactionsScreen(BaseScreen):
                 lbl.text_size = (content_w, None)
                 lbl.font_size = base_fs
                 lbl.texture_update()
-                # Уменьшаем шрифт если текст не помещается
+                # уменьшаем шрифт если текст не помещается
                 while lbl.texture_size[0] > content_w and lbl.font_size > min_fs:
                     lbl.font_size = lbl.font_size - dp(1)
                     lbl.texture_update()

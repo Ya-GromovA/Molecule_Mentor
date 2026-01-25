@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/screens/theory_screen.py
+
 from __future__ import annotations
 
 import re
@@ -21,7 +21,7 @@ def sanitize_text(text: str) -> str:
     if not text:
         return ""
 
-    # Убираем LaTeX-нотацию (частично)
+    # убираем куски LaTeX
     text = text.replace("\\[", "")
     text = text.replace("\\]", "")
     text = text.replace("\\(", "")
@@ -36,7 +36,7 @@ def sanitize_text(text: str) -> str:
     text = re.sub(r"_\{([^}]*)\}", r"_\1", text)
     text = text.replace("\\", "")
     
-    # Заменяем греческие буквы
+    # заменяем греческие буквы
     text = text.replace("σ", "сигма")
     text = text.replace("π", "пи")
     text = text.replace("α", "альфа")
@@ -44,7 +44,7 @@ def sanitize_text(text: str) -> str:
     text = text.replace("γ", "гамма")
     text = text.replace("δ", "дельта")
     
-    # Заменяем специальные символы
+    # заменяем спецсимволы
     text = text.replace("→", "->")
     text = text.replace("←", "<-")
     text = text.replace("↔", "<->")
@@ -65,7 +65,7 @@ def sanitize_text(text: str) -> str:
     text = text.replace(""", "\"")
     text = text.replace(""", "\"")
     
-    # Убираем Markdown разметку
+    # убираем Markdown разметку
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold** -> bold
     text = re.sub(r'\*([^*]+)\*', r'\1', text)       # *italic* -> italic
     text = re.sub(r'__([^_]+)__', r'\1', text)       # __bold__ -> bold
@@ -134,7 +134,7 @@ class TheoryScreen(BaseScreen):
 
         self.clear_widgets()
 
-        # Фон
+        # фон
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
         bg_rgba = getattr(app, "mm_bg", (0.12, 0.15, 0.25, 1))
         with root.canvas.before:
@@ -142,7 +142,7 @@ class TheoryScreen(BaseScreen):
             self._bg_rect = Rectangle(pos=root.pos, size=root.size)
         root.bind(pos=self._update_bg, size=self._update_bg)
 
-        # Заголовок
+        # заголовок
         self.title = str(topic_title)
         app.set_top_title(self.title)
 
@@ -208,7 +208,7 @@ class TheoryScreen(BaseScreen):
                         )
                     )
             else:
-                # text by default
+                # текст по умолчанию
                 clean_text = sanitize_text(str(b.content or "").strip())
                 lbl = MDLabel(
                     text=clean_text,

@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/screens/molecule_viewer_screen.py
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,7 +36,7 @@ class MoleculeViewerScreen(Screen):
         return App.get_running_app()
 
     def on_pre_enter(self, *args):
-        # отрисуем после того, как KV ids готовы
+        # рисуем после того, как KV ids готовы
         Clock.schedule_once(lambda *_: self._ensure_ui_and_load(), 0)
 
     def _ensure_ui_and_load(self) -> None:
@@ -56,7 +56,7 @@ class MoleculeViewerScreen(Screen):
         except Exception:
             pass
 
-        # Заполняем описание
+        # заполняем описание
         desc_label = self.ids.get("description_label")
         desc_card = self.ids.get("description_card")
         if desc_label and desc_card:
@@ -79,7 +79,7 @@ class MoleculeViewerScreen(Screen):
             ))
             return
 
-        # чтобы не перезагружать тот же файл по кругу
+        # чтобы не грузить тот же файл по кругу
         key = str(pdb_path)
         if self._loaded_key == key and self._viewer is not None:
             return
@@ -87,7 +87,7 @@ class MoleculeViewerScreen(Screen):
 
         host.clear_widgets()
 
-        # карточка-подложка под 3D, чтобы смотрелось в стиле приложения
+        # карточка-подложка под 3D
         card = MDCard(
             md_bg_color=getattr(self.app, "mm_surface2", getattr(self.app, "mm_surface", (0.10, 0.11, 0.14, 1))),
             radius=[18, 18, 18, 18],

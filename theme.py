@@ -8,7 +8,7 @@ RGBA = Tuple[float, float, float, float]
 
 @dataclass(frozen=True)
 class AppTheme:
-    # Material 3 friendly palette (Tiffany + light blue-violet)
+    # набор цветов для приложения
     bg: RGBA
     surface: RGBA
     surface2: RGBA
@@ -20,11 +20,11 @@ class AppTheme:
 
 
 THEME = AppTheme(
-    bg=(0.12, 0.15, 0.25, 1.0),        # немного светлее сине-фиолетовый
-    surface=(0.10, 0.12, 0.18, 1.0),   # карточки
-    surface2=(0.13, 0.16, 0.24, 1.0),  # приподнятые карточки
-    primary=(0.22, 0.87, 0.80, 1.0),   # тиффани (яркий)
-    accent=(0.55, 0.62, 0.98, 1.0),    # светло-сине-фиолетовый
+    bg=(0.12, 0.15, 0.25, 1.0),        # основной фон
+    surface=(0.10, 0.12, 0.18, 1.0),   # фон карточек
+    surface2=(0.13, 0.16, 0.24, 1.0),  # чуть светлее карточки
+    primary=(0.22, 0.87, 0.80, 1.0),   # основной акцент
+    accent=(0.55, 0.62, 0.98, 1.0),    # доп. акцент
     button_color=(0.22, 0.87, 0.80, 1.0),
     text=(0.95, 0.96, 0.99, 1.0),
     text2=(0.75, 0.78, 0.86, 1.0),
@@ -32,11 +32,7 @@ THEME = AppTheme(
 
 
 def apply_to_app(app) -> None:
-    """
-    Public, stable API:
-    - Sets app.mm_* color attributes used from KV.
-    - Does not touch deprecated KivyMD APIs.
-    """
+    # переносим цвета в app.mm_*, чтобы их использовал KV
     app.mm_bg = THEME.bg
     app.mm_surface = THEME.surface
     app.mm_surface2 = THEME.surface2
@@ -46,5 +42,4 @@ def apply_to_app(app) -> None:
     app.mm_text = THEME.text
     app.mm_text2 = THEME.text2
 
-    # Material style is configured in app (main.py): theme_cls.material_style="M3"
-    # Here we only provide explicit RGBA colors for KV.
+    # стиль Material настраивается в main.py

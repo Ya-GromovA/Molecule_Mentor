@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/screens/molecules_screen.py
+
 from __future__ import annotations
 
 import re
@@ -156,7 +156,7 @@ _MOLECULE_DATA: Dict[str, tuple] = {
     ),
 }
 
-# Для обратной совместимости
+# для обратной совместимости
 _NAME_MAP: Dict[str, str] = {k: v[0] for k, v in _MOLECULE_DATA.items()}
 
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
@@ -292,8 +292,8 @@ class MoleculesScreen(Screen):
         if not self._loaded:
             Clock.schedule_once(lambda *_: self._load_and_render(), 0)
 
-        # KivyMD 2.x: иногда вводимый текст в MDTextField может становиться тёмным.
-        # Фиксим стабильно (Desktop/Android), не ломая разметку.
+        # KivyMD 2.x: иногда текст в MDTextField становится тёмным
+        # фикс для Desktop/Android
         Clock.schedule_once(lambda *_: self._harden_search_field_colors(), 0)
 
     def _harden_search_field_colors(self) -> None:
@@ -387,13 +387,13 @@ class MoleculesScreen(Screen):
 
         app = self.app
 
-        # ✅ делаем “воздух” между карточками, без try/except
+        # делаем "воздух" между карточками
         if hasattr(lst, "spacing"):
             lst.spacing = dp(app.mm_molecules_list_spacing)
         if hasattr(lst, "padding"):
             lst.padding = (0, 0, 0, dp(app.mm_molecules_list_bottom_padding))
 
-        # ✅ фон карточек берём ТОЛЬКО отсюда (теперь стабильно тёмный)
+        # фон карточек берём только отсюда (стабильно тёмный)
         card_bg = getattr(app, "mm_molecules_card_bg", (0.10, 0.11, 0.14, 1))
         border = getattr(app, "mm_molecules_card_border", (1, 1, 1, 0.16))
         pressed_delta = float(getattr(app, "mm_molecules_card_pressed_delta", 0.08))

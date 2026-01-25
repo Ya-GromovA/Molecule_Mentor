@@ -24,7 +24,7 @@ from utils.visualizer_3d import Visualizer3D
 class _PlayerState:
     playing: bool = False
     frame_idx: int = 0
-    tick_ev: Optional[object] = None  # ClockEvent
+    tick_ev: Optional[object] = None  # таймер проигрывания
 
 
 class ReactionViewerScreen(BaseScreen):
@@ -52,7 +52,7 @@ class ReactionViewerScreen(BaseScreen):
         self._stop()
         return super().on_pre_leave(*args)
         
-     # ---------- UI helpers (KivyMD 2.x safe) ----------
+    # ---------- помощники для UI ----------
     def _make_btn(self, label: str, on_release, bg_rgba=None):
         btn = MDButton(
             style="filled",
@@ -67,20 +67,13 @@ class ReactionViewerScreen(BaseScreen):
         btn.add_widget(txt)
         return btn, txt
         
-    # ---------- geometry helpers ----------
+    # ---------- геометрия ----------
     def _separate_molecules(self, atoms: List[Dict], bonds: List) -> Tuple[List[Dict], List[List[int]]]:
-        """
-        Раздвигает отдельные молекулы/ионы внутри сцены, чтобы не накладывались.
-        Молекула = связная компонента графа связей.
-        Индексы атомов сохраняются.
-        
-        Returns:
-            Tuple[atoms, groups] - атомы и список групп для независимого вращения
-        """
+        # раздвигаем молекулы, чтобы они не налезали друг на друга
         if not atoms:
             return atoms, []
         if not bonds:
-            # Каждый атом — отдельная группа
+            # если связей нет, каждый атом отдельная группа
             return atoms, [[i] for i in range(len(atoms))]
 
         n = len(atoms)
@@ -94,7 +87,7 @@ class ReactionViewerScreen(BaseScreen):
                 adj[i].append(j)
                 adj[j].append(i)
 
-        # найти компоненты связности (DFS/BFS)
+        # ищем компоненты связности
         seen = [False] * n
         comps: List[List[int]] = []
         for start in range(n):
@@ -112,12 +105,12 @@ class ReactionViewerScreen(BaseScreen):
                         stack.append(u)
             comps.append(comp)
 
-        # Если реально одна компонента — раздвигать нечего, но группу создаём
+        # если группа одна, двигать не надо
         if len(comps) <= 1:
             return atoms, comps
 
         def _get(a, key: str, default=0.0):
-            # atoms can be dicts OR Atom-like objects with attributes x/y/z
+            # атомы могут быть dict или объектом
             if isinstance(a, dict):
                 return a.get(key, default)
             return getattr(a, key, default)
@@ -128,7 +121,7 @@ class ReactionViewerScreen(BaseScreen):
             zs = [float(_get(atoms[k], "z", 0.0)) for k in idxs]
             return min(xs), max(xs), min(ys), max(ys), min(zs), max(zs)
 
-        # Сортируем молекулы слева-направо по их центру (чтобы было стабильно)
+        # сортируем слева направо, чтобы порядок был стабильный
         comp_meta = []
         for c in comps:
             x0, x1, y0, y1, z0, z1 = bbox(c)
@@ -138,7 +131,7 @@ class ReactionViewerScreen(BaseScreen):
 
         comp_meta.sort(key=lambda t: t[0])
 
-        # Раскладываем молекулы ТОЛЬКО по оси X (в один ряд)
+        # раскладываем молекулы по оси X
         shifts_x: Dict[int, float] = {}
         shifts_y: Dict[int, float] = {}  # всегда 0
         
@@ -146,23 +139,23 @@ class ReactionViewerScreen(BaseScreen):
         
         for cx, width, comp, (x0, x1) in comp_meta:
             w = max(width, 0.5)
-            gap = max(0.3, w * 0.20)  # компактный зазор
+            gap = max(0.3, w * 0.20)  # небольшой зазор
             
             if prev_right is None:
-                # Первая молекула: центрируем около 0
+                # первая молекула около нуля
                 shift_x = -cx
                 prev_right = x1 + shift_x
             else:
-                # Следующая: ставим правее предыдущей
+                # следующую ставим правее
                 target_left = prev_right + gap
                 shift_x = target_left - x0
                 prev_right = x1 + shift_x
             
             for k in comp:
                 shifts_x[k] = shift_x
-                shifts_y[k] = 0.0  # Все на одной высоте
+                shifts_y[k] = 0.0  # все на одной высоте
 
-        # применяем сдвиги (копию атомов, оригинал не трогаем)
+        # применяем сдвиги (делаем копию)
         out = []
         AtomCls = atoms[0].__class__ if atoms else None
 
@@ -170,7 +163,7 @@ class ReactionViewerScreen(BaseScreen):
             sx = float(shifts_x.get(i, 0.0))
             sy = float(shifts_y.get(i, 0.0))
 
-            # dict atoms
+            # dict атомы
             if isinstance(a, dict):
                 aa = dict(a)
                 aa["x"] = float(aa.get("x", 0.0)) + sx
@@ -178,7 +171,7 @@ class ReactionViewerScreen(BaseScreen):
                 out.append(aa)
                 continue
 
-            # Atom-like object: try to create a new instance; fallback to in-place update
+            # обычный объект Atom
             try:
                 kwargs = {
                     "element": getattr(a, "element", None),
@@ -187,7 +180,7 @@ class ReactionViewerScreen(BaseScreen):
                     "z": float(getattr(a, "z", 0.0)),
                     "label": getattr(a, "label", None),
                 }
-                # some Atom classes may not accept label=None
+                # если label=None, то убираем
                 if kwargs["label"] is None:
                     kwargs.pop("label", None)
 
@@ -200,7 +193,7 @@ class ReactionViewerScreen(BaseScreen):
                     pass
                 out.append(a)
 
-        # Центрируем сцену по X (чтобы не "уезжала" камера)
+        # центрируем сцену по X
         def _get_x(a):
             if isinstance(a, dict):
                 return float(a.get("x", 0.0))
@@ -219,7 +212,7 @@ class ReactionViewerScreen(BaseScreen):
                     except Exception:
                         pass
 
-        # Возвращаем атомы и группы (компоненты связности)
+        # возвращаем атомы и группы
         sorted_groups = [comp for (_, _, comp, _) in comp_meta]
         return out, sorted_groups
 
@@ -229,7 +222,7 @@ class ReactionViewerScreen(BaseScreen):
 
         root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
 
-        # Header info - компактный заголовок
+        # заголовок сверху
         from kivy.metrics import sp
         
         self._lbl_name = MDLabel(
@@ -240,7 +233,7 @@ class ReactionViewerScreen(BaseScreen):
             halign="left",
             size_hint_y=None,
             height=dp(24),
-            font_size=sp(16),  # Масштабируемый шрифт
+            font_size=sp(16),  # масштабируемый шрифт
             shorten=True,
             shorten_from="right",
             text_size=(None, None),
@@ -252,12 +245,12 @@ class ReactionViewerScreen(BaseScreen):
             halign="left",
             size_hint_y=None,
             height=dp(18),
-            font_size=sp(12),  # Масштабируемый шрифт
+            font_size=sp(12),  # масштабируемый шрифт
             shorten=True,
             shorten_from="right",
         )
         
-        # Привязываем ширину текста к ширине родителя
+        # ширина текста под ширину родителя
         def _update_text_size(*_):
             if self._lbl_name:
                 self._lbl_name.text_size = (root.width - dp(20), None)
@@ -268,18 +261,18 @@ class ReactionViewerScreen(BaseScreen):
         root.add_widget(self._lbl_name)
         root.add_widget(self._lbl_eq)
 
-        # --- BODY: 3D (больше) + нижняя панель (компактнее) ---
+        # тело: 3D сверху, кнопки снизу
         body = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(4))
 
-        # 3D host — основная область (75% высоты)
+        # 3D область
         host = BoxLayout(orientation="vertical", size_hint=(1, 0.75))
         self._viz = Visualizer3D(size_hint=(1, 1))
         host.add_widget(self._viz)
 
-        # Bottom panel — кнопки + шаг/описание (25%)
+        # нижняя панель с кнопками и шагами
         bottom = BoxLayout(orientation="vertical", size_hint=(1, 0.25), spacing=dp(4))
 
-        # Controls row — кнопки управления
+        # кнопки управления
         controls = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46), spacing=dp(6))
 
         bg_ctrl = app.mm_surface2
@@ -295,7 +288,7 @@ class ReactionViewerScreen(BaseScreen):
             b.size_hint_x = 1
             controls.add_widget(b)
 
-        # Step info — занимает остаток нижней панели, описание скроллится
+        # блок с описанием шага
         from kivy.metrics import sp
         
         step_box = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(2))
@@ -308,7 +301,7 @@ class ReactionViewerScreen(BaseScreen):
             halign="left",
             size_hint_y=None,
             height=dp(20),
-            font_size=sp(14),  # Масштабируемый шрифт
+            font_size=sp(14),  # масштабируемый шрифт
         )
 
         self._lbl_step_desc = MDLabel(
@@ -317,12 +310,12 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text2,
             halign="left",
             valign="top",
-            font_size=sp(13),  # Масштабируемый шрифт
+            font_size=sp(13),  # масштабируемый шрифт
             text_size=(0, None),
             size_hint_y=None,
         )
         
-        # Автоматическая высота по контенту
+        # высота по содержимому
         self._lbl_step_desc.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1]))
 
         desc_scroll = MDScrollView(do_scroll_x=False, bar_width=dp(4))
@@ -342,7 +335,7 @@ class ReactionViewerScreen(BaseScreen):
         
         self.add_widget(root)
 
-        # обновлять text_size при ресайзе
+        # обновляем text_size при ресайзе
         def _fix_text_size(*_):
             if self._lbl_step_desc:
                 self._lbl_step_desc.text_size = (root.width - dp(20), None)
@@ -366,7 +359,7 @@ class ReactionViewerScreen(BaseScreen):
             app.toast(f"Ошибка загрузки реакции: {e}")
             return
 
-        # reset player state
+        # сброс состояния плеера
         self._stop()
         self._state.frame_idx = 0
 
@@ -398,11 +391,70 @@ class ReactionViewerScreen(BaseScreen):
         if not steps:
             return int(stage_idx or 0)
 
+        if not self._uses_stage_index():
+            total = max(len(self._rxn.frames) - 1, 1)
+            return int(round((idx / total) * (len(steps) - 1)))
+
         if stage_idx is None:
             total = max(len(self._rxn.frames) - 1, 1)
             return int(round((idx / total) * (len(steps) - 1)))
 
         return max(0, min(stage_idx, len(steps) - 1))
+
+    def _uses_stage_index(self) -> bool:
+        if not self._rxn or not self._rxn.frames:
+            return False
+        try:
+            max_stage = max(int(getattr(fr, "stage_index", 0) or 0) for fr in self._rxn.frames)
+            min_stage = min(int(getattr(fr, "stage_index", 0) or 0) for fr in self._rxn.frames)
+            return max_stage > min_stage
+        except Exception:
+            return False
+
+    def _max_stage_index(self) -> int:
+        if not self._rxn or not self._rxn.frames:
+            return 0
+        steps = self._rxn.steps or []
+        if steps and not self._uses_stage_index():
+            return max(0, len(steps) - 1)
+        try:
+            return max(int(getattr(fr, "stage_index", 0) or 0) for fr in self._rxn.frames)
+        except Exception:
+            return 0
+
+    def _find_frame_for_stage(self, target_stage: int, direction: int = 0) -> int:
+        if not self._rxn or not self._rxn.frames:
+            return 0
+
+        steps = self._rxn.steps or []
+        if steps and not self._uses_stage_index():
+            total = max(len(self._rxn.frames) - 1, 1)
+            denom = max(len(steps) - 1, 1)
+            return int(round((target_stage / denom) * total))
+
+        for i, fr in enumerate(self._rxn.frames):
+            try:
+                if int(getattr(fr, "stage_index", 0) or 0) == target_stage:
+                    return i
+            except Exception:
+                continue
+
+        if direction < 0:
+            for i in range(len(self._rxn.frames) - 1, -1, -1):
+                try:
+                    if int(getattr(self._rxn.frames[i], "stage_index", 0) or 0) < target_stage:
+                        return i
+                except Exception:
+                    continue
+        if direction > 0:
+            for i, fr in enumerate(self._rxn.frames):
+                try:
+                    if int(getattr(fr, "stage_index", 0) or 0) > target_stage:
+                        return i
+                except Exception:
+                    continue
+
+        return max(0, min(self._state.frame_idx, len(self._rxn.frames) - 1))
 
     def _render_step(self) -> None:
         if not self._rxn:
@@ -443,11 +495,11 @@ class ReactionViewerScreen(BaseScreen):
             bonds=fr.bonds,
             highlight_break=fr.highlight_break,
             highlight_form=fr.highlight_form,
-            groups=groups,  # Передаём группы для независимого вращения
+            groups=groups,  # группы для независимого вращения
         )
         self._render_step()
 
-    # --- player controls ---
+    # --- управление проигрыванием ---
     def _stop(self) -> None:
         self._state.playing = False
         if self._state.tick_ev is not None:
@@ -503,12 +555,17 @@ class ReactionViewerScreen(BaseScreen):
         if not self._rxn or not self._rxn.frames:
             return
         self._stop()
-        self._state.frame_idx = max(0, self._state.frame_idx - 1)
+        current_step = self._current_step_index()
+        target_step = max(0, current_step - 1)
+        self._state.frame_idx = self._find_frame_for_stage(target_step, direction=-1)
         self._render_frame()
 
     def _go_next(self) -> None:
         if not self._rxn or not self._rxn.frames:
             return
         self._stop()
-        self._state.frame_idx = min(len(self._rxn.frames) - 1, self._state.frame_idx + 1)
+        current_step = self._current_step_index()
+        max_stage = self._max_stage_index()
+        target_step = min(max_stage, current_step + 1)
+        self._state.frame_idx = self._find_frame_for_stage(target_step, direction=1)
         self._render_frame()

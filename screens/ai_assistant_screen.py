@@ -8,6 +8,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 
 from kivymd.uix.button import MDButton, MDButtonText
 from kivymd.uix.card import MDCard
@@ -24,13 +25,24 @@ log = logging.getLogger(__name__)
 class AIAssistantScreen(BaseScreen):
     _send_text: Optional[MDButtonText] = None
     _prev_softinput_mode: Optional[str] = None
+    _base_padding: float = 0
+    _root: Optional[FloatLayout] = None
+    _content: Optional[BoxLayout] = None
+    _input_row: Optional[BoxLayout] = None
+    _keyboard_ev = None
+    _last_keyboard_height: int = 0
+    _row_height: float = 0
 
     def on_pre_enter(self, *args):
         self.title = "ИИ-помощник"
         super().on_pre_enter(*args)
         self._prev_softinput_mode = getattr(Window, "softinput_mode", None)
         try:
-            Window.softinput_mode = "resize"
+            Window.softinput_mode = "pan"
+        except Exception:
+            pass
+        try:
+            Window.bind(on_keyboard_height=self._on_keyboard_height)
         except Exception:
             pass
         Clock.schedule_once(lambda *_: self._render(), 0)
@@ -41,15 +53,36 @@ class AIAssistantScreen(BaseScreen):
                 Window.softinput_mode = self._prev_softinput_mode
             except Exception:
                 pass
+        try:
+            Window.unbind(on_keyboard_height=self._on_keyboard_height)
+        except Exception:
+            pass
+        if self._keyboard_ev is not None:
+            try:
+                self._keyboard_ev.cancel()
+            except Exception:
+                pass
+            self._keyboard_ev = None
         return super().on_pre_leave(*args)
 
     def _render(self):
         app = self.get_app()
         self.clear_widgets()
 
-        root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
+        self._base_padding = dp(10)
+        self._row_height = dp(44)
+        root = FloatLayout()
+        self._root = root
 
-        # --- messages area
+        content = BoxLayout(
+            orientation="vertical",
+            padding=[self._base_padding, self._base_padding, self._base_padding, self._base_padding + self._row_height],
+            spacing=dp(10),
+            size_hint=(1, 1),
+        )
+        self._content = content
+
+        # область с сообщениями
         self._scroll = MDScrollView(do_scroll_x=False)
 
         self._messages = BoxLayout(
@@ -61,10 +94,14 @@ class AIAssistantScreen(BaseScreen):
         self._messages.bind(minimum_height=self._messages.setter("height"))
         self._scroll.add_widget(self._messages)
 
-        root.add_widget(self._scroll)
+        content.add_widget(self._scroll)
+        root.add_widget(content)
 
-        # --- input row
-        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(10))
+        # строка ввода снизу
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=self._row_height, spacing=dp(10))
+        row.size_hint = (1, None)
+        row.pos_hint = {"x": 0, "y": 0}
+        self._input_row = row
 
         self._input = MDTextField(
             hint_text="Вопрос",
@@ -74,7 +111,7 @@ class AIAssistantScreen(BaseScreen):
             height=dp(44),
         )
 
-        # Фикс цвета ввода (KivyMD 2.x любит "откатывать" цвет текста)
+        # фикс цвета ввода (иначе KivyMD сбрасывает цвет)
         harden_mdtextfield_colors(
             self._input,
             text_rgba=tuple(getattr(app, "mm_text", (1, 1, 1, 1))),
@@ -93,14 +130,36 @@ class AIAssistantScreen(BaseScreen):
 
         self.add_widget(root)
         self._sync_history(scroll_to_bottom=True)
+        if self._keyboard_ev is None:
+            self._keyboard_ev = Clock.schedule_interval(self._refresh_keyboard_offset, 0.1)
 
-    # ---------------- UI helpers ----------------
+    def _apply_keyboard_offset(self, height: int) -> None:
+        if not self._root:
+            return
+        extra = max(0, int(height or 0))
+        if self._input_row:
+            self._input_row.y = extra
+        if self._content:
+            base = self._base_padding
+            self._content.padding = [base, base, base, base + self._row_height + extra]
+
+    def _on_keyboard_height(self, _window, height: int) -> None:
+        self._last_keyboard_height = int(height or 0)
+        self._apply_keyboard_offset(self._last_keyboard_height)
+
+    def _refresh_keyboard_offset(self, _dt) -> None:
+        height = int(getattr(Window, "keyboard_height", 0) or 0)
+        if height != self._last_keyboard_height:
+            self._last_keyboard_height = height
+            self._apply_keyboard_offset(height)
+
+    # ---------------- помощники для UI ----------------
 
     def _make_bubble(self, role: str, text: str) -> MDCard:
-        # Цвет текста — всегда читаемый
+        # цвет текста
         text_main = (1, 1, 1, 1)
 
-        # Тёмные bubble, разные для user / ai
+        # тёмные пузырьки, разные для юзера и ИИ
         if role == "user":
             card_bg = (0.18, 0.20, 0.30, 1)   # тёмно-синий
         else:
@@ -110,7 +169,7 @@ class AIAssistantScreen(BaseScreen):
 
         card = MDCard(
             md_bg_color=card_bg,
-            theme_bg_color="Custom",  # ✅ критично, иначе может подхватывать светлую тему
+            theme_bg_color="Custom",  # важно, иначе может стать светлым
             radius=[dp(14)] * 4,
             padding=(dp(12), dp(10), dp(12), dp(10)),
             size_hint_x=1,
@@ -126,7 +185,7 @@ class AIAssistantScreen(BaseScreen):
             size_hint_y=None,
         )
 
-        # чтобы текст корректно переносился и карточка подстраивалась по высоте
+        # чтобы текст нормально переносился
         def _reflow(*_):
             lbl.text_size = (card.width - dp(24), None)
             lbl.texture_update()
@@ -141,11 +200,11 @@ class AIAssistantScreen(BaseScreen):
 
     def _scroll_to_bottom(self):
         try:
-            self._scroll.scroll_y = 0  # низ
+            self._scroll.scroll_y = 0  # вниз
         except Exception:
             pass
 
-    # ---------------- state ----------------
+    # ---------------- состояние ----------------
 
     def _sync_history(self, scroll_to_bottom: bool = False):
         app = self.get_app()
@@ -160,7 +219,7 @@ class AIAssistantScreen(BaseScreen):
         if scroll_to_bottom:
             Clock.schedule_once(lambda *_: self._scroll_to_bottom(), 0)
 
-    # ---------------- actions ----------------
+    # ---------------- действия ----------------
 
     def _send_message(self):
         app = self.get_app()
@@ -174,7 +233,7 @@ class AIAssistantScreen(BaseScreen):
         if not hasattr(app, "ai_history"):
             app.ai_history = []
 
-        # 1) Добавляем в историю для UI
+        # 1) добавляем в историю для UI
         app.ai_history.append(("user", text))
         app.ai_history.append(("assistant", "Думаю..."))
         self._sync_history(scroll_to_bottom=True)
@@ -186,8 +245,8 @@ class AIAssistantScreen(BaseScreen):
             self._send.disabled = False
             return
 
-        # 2) В движок отправляем ИСТОРИЮ ДО текущего сообщения (чтобы вопрос не дублировался)
-        # Последние два элемента сейчас: ("user", text), ("assistant","Думаю...")
+        # 2) в движок отправляем историю до текущего сообщения
+        # последние два элемента: ("user", text), ("assistant","Думаю...")
         history_pairs = app.ai_history[:-2]
 
         history_for_engine = [
@@ -205,7 +264,7 @@ class AIAssistantScreen(BaseScreen):
                 log.exception("AI request failed: %s", e)
                 ans = f"Ошибка: {e}"
 
-            # заменяем последнюю "Думаю..." на реальный ответ
+            # заменяем "Думаю..." на реальный ответ
             if app.ai_history and app.ai_history[-1] == ("assistant", "Думаю..."):
                 app.ai_history[-1] = ("assistant", ans)
             else:

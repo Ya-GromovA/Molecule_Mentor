@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/screens/course_topic_screen.py
+
 from __future__ import annotations
 
 from kivy.clock import Clock
@@ -63,7 +63,7 @@ class CourseTopicScreen(BaseScreen):
         super().on_pre_enter(*args)
         Clock.schedule_once(lambda *_: self._render(), 0)
 
-    # ---------------- UI styling ----------------
+    # ---------------- оформление UI ----------------
 
     def _make_clickable_item(self, title: str, subtitle: str = None, on_click=None) -> ClickableCard:
         """Создаёт кликабельный элемент списка."""
@@ -106,7 +106,7 @@ class CourseTopicScreen(BaseScreen):
         app = self.get_app()
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
 
-        # фон как у тёмных экранов (молекулы/реакции)
+        # фон как у тёмных экранов
         bg_rgba = getattr(app, "mm_bg", None) or getattr(app, "mm_surface", None) or (0.06, 0.07, 0.09, 1)
         with root.canvas.before:
             self._bg_color = Color(*bg_rgba)
@@ -120,7 +120,7 @@ class CourseTopicScreen(BaseScreen):
             self._bg_rect.pos = self.parent.pos if self.parent else self.pos
             self._bg_rect.size = self.size
 
-    # ---------------- render ----------------
+    # ---------------- отрисовка ----------------
 
     def _render(self):
         app = self.get_app()
@@ -137,7 +137,7 @@ class CourseTopicScreen(BaseScreen):
         self.clear_widgets()
         root = self._make_root()
 
-        # ---- MODE 1: section -> topics (список тем)
+        # ---- MODE 1: раздел -> темы
         if section_id is not None:
             self.title = str(section_title)
             app.set_top_title(self.title)
@@ -159,7 +159,7 @@ class CourseTopicScreen(BaseScreen):
             col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
             col.bind(minimum_height=col.setter("height"))
 
-            # Кнопка для запуска теста
+            # кнопка для запуска теста
             quiz_btn = self._make_clickable_item(
                 title="Пройти тест по курсу",
                 subtitle=f"Проверь свои знания ({len(topics)} тем)",
@@ -179,7 +179,7 @@ class CourseTopicScreen(BaseScreen):
             self.add_widget(root)
             return
 
-        # ---- MODE 3: course -> sections
+        # ---- MODE 3: курс -> разделы
         if course_id is None:
             root.add_widget(
                 MDLabel(

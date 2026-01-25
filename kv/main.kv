@@ -295,57 +295,68 @@
         padding: dp(4)
         spacing: dp(2)
 
-        # Сообщение (зелёные надписи) — наверху над молекулой
-        MDLabel:
-            id: message_label
-            text: ""
-            halign: "center"
-            theme_text_color: "Custom"
-            text_color: (0.3, 0.9, 0.5, 1)
-            font_size: dp(11)
-            bold: True
-            size_hint_y: None
-            height: dp(16)
+        # Сообщение + кнопка запуска (над полем молекулы)
+        BoxLayout:
+            size_hint: 1, None
+            height: dp(24)
+            spacing: dp(6)
+
+            MDLabel:
+                id: message_label
+                text: ""
+                halign: "left"
+                valign: "middle"
+                theme_text_color: "Custom"
+                text_color: (0.3, 0.9, 0.5, 1)
+                font_size: dp(11)
+                bold: True
+                size_hint_x: 1
+                text_size: self.width, None
+
+            MDButton:
+                id: run_reaction_btn
+                style: "filled"
+                size_hint: None, None
+                size: dp(152), dp(22)
+                md_bg_color: (0.2, 0.8, 0.4, 1)
+                opacity: 0
+                disabled: True
+                on_release: root.run_reaction()
+                MDButtonIcon:
+                    icon: "play"
+                    theme_icon_color: "Custom"
+                    icon_color: (0, 0, 0, 1)
+                MDButtonText:
+                    text: "Запустить"
+                    theme_text_color: "Custom"
+                    text_color: (0, 0, 0, 1)
+                    font_size: dp(10)
 
         # 3D-редактор (основная область)
-        BoxLayout:
-            id: editor_host
-            orientation: "vertical"
+        FloatLayout:
             size_hint: 1, 1
 
-        # Кнопка "Запустить процесс" (скрыта по умолчанию, появляется после добавления реагента)
-        MDButton:
-            id: run_reaction_btn
-            style: "filled"
-            size_hint: 1, None
-            height: dp(0)
-            md_bg_color: (0.2, 0.8, 0.4, 1)
-            opacity: 0
-            disabled: True
-            on_release: root.run_reaction()
-            MDButtonIcon:
-                icon: "play"
-                theme_icon_color: "Custom"
-                icon_color: (0, 0, 0, 1)
-            MDButtonText:
-                text: "Запустить процесс"
-                theme_text_color: "Custom"
-                text_color: (0, 0, 0, 1)
-                font_size: dp(11)
+            BoxLayout:
+                id: editor_host
+                orientation: "vertical"
+                size_hint: 1, 1
+                pos_hint: {"x": 0, "y": 0}
+
+
 
         # Нижняя панель
         BoxLayout:
             orientation: "vertical"
             size_hint: 1, None
-            height: dp(90)
+            height: dp(104)
             spacing: dp(3)
             padding: dp(2), dp(2)
 
             # Строка 1: Инфо (атомы, связи, формула)
             BoxLayout:
                 size_hint: 1, None
-                height: dp(16)
-                padding: dp(4), dp(1)
+                height: dp(34)
+                padding: dp(6), dp(2)
                 canvas.before:
                     Color:
                         rgba: (0.06, 0.07, 0.12, 1)
@@ -360,7 +371,11 @@
                     halign: "center"
                     theme_text_color: "Custom"
                     text_color: (0.6, 0.6, 0.7, 1)
-                    font_size: dp(8)
+                    font_size: min(dp(6), max(dp(4), self.width * 0.028))
+                    text_size: self.width - dp(24), None
+                    valign: "middle"
+                    shorten: False
+                    max_lines: 2
 
             # Строка 2: Температура
             BoxLayout:
@@ -500,23 +515,111 @@
             text: "Выберите вещества для смешивания"
             halign: "center"
             size_hint: 1, None
-            height: dp(24)
+            height: dp(20)
             theme_text_color: "Custom"
             text_color: app.mm_accent
             font_size: sp(13)
             bold: True
 
-        # 3D область
-        BoxLayout:
-            id: editor_host
-            orientation: "vertical"
+        # 3D область + кнопки действий
+        FloatLayout:
             size_hint: 1, 1
+
+            BoxLayout:
+                id: editor_host
+                orientation: "vertical"
+                size_hint: 1, 0.96
+                pos_hint: {"x": 0, "top": 1}
+
+            MDButton:
+                id: mix_btn
+                style: "filled"
+                size_hint: None, None
+                width: min(dp(120), root.width * 0.32)
+                height: dp(22)
+                pos_hint: {"x": 0.02, "top": 0.98}
+                md_bg_color: app.mm_accent
+                on_release: root.run_reaction()
+                MDButtonText:
+                    text: "Смешать!"
+                    font_size: min(sp(12), max(sp(9), root.width * 0.026))
+                    theme_text_color: "Custom"
+                    text_color: (1, 1, 1, 1)
+                    bold: True
+
+            MDButton:
+                id: reset_btn
+                style: "filled"
+                size_hint: None, None
+                width: min(dp(120), root.width * 0.32)
+                height: dp(22)
+                pos_hint: {"right": 0.98, "top": 0.98}
+                md_bg_color: (0.2, 0.22, 0.28, 1)
+                on_release: root.reset_editor()
+                MDButtonText:
+                    text: "Сброс"
+                    font_size: min(sp(11), max(sp(8), root.width * 0.024))
+                    theme_text_color: "Custom"
+                    text_color: app.mm_text
+
+        Widget:
+            size_hint: 1, None
+            height: dp(6)
+
+        # Температура (компактный слайдер) - вынесен выше
+        MDBoxLayout:
+            orientation: "horizontal"
+            size_hint: 1, None
+            height: dp(26)
+            spacing: dp(4)
+            padding: [dp(4), dp(1)]
+
+            MDIconButton:
+                icon: "snowflake"
+                theme_icon_color: "Custom"
+                icon_color: (0.35, 0.75, 1, 1)
+                size_hint_x: None
+                width: dp(26)
+                md_bg_color: (0, 0, 0, 0)
+                on_release: None
+
+            MDSlider:
+                id: temp_slider
+                min: -200
+                max: 500
+                value: 25
+                step: 10
+                size_hint_x: 1
+                on_value: root.on_temperature_change(self.value)
+
+            MDIconButton:
+                icon: "fire"
+                theme_icon_color: "Custom"
+                icon_color: (1, 0.55, 0.2, 1)
+                size_hint_x: None
+                width: dp(26)
+                md_bg_color: (0, 0, 0, 0)
+                on_release: None
+
+            MDLabel:
+                id: temp_label
+                text: "25°C"
+                halign: "center"
+                theme_text_color: "Custom"
+                text_color: app.mm_text
+                font_size: min(sp(11), max(sp(9), self.width * 0.3))
+                size_hint_x: None
+                width: dp(42)
+
+        Widget:
+            size_hint: 1, None
+            height: dp(4)
 
         # Инфо о веществах (компактно)
         BoxLayout:
             size_hint: 1, None
-            height: dp(18)
-            padding: [dp(4), 0]
+            height: dp(36)
+            padding: [dp(6), dp(2)]
             canvas.before:
                 Color:
                     rgba: (0.06, 0.07, 0.12, 1)
@@ -528,152 +631,110 @@
                 id: info_label
                 text: ""
                 halign: "center"
+                valign: "middle"
+                text_size: self.size
                 theme_text_color: "Custom"
                 text_color: (0.6, 0.6, 0.7, 1)
                 font_size: sp(10)
-
-        # Температура (компактный слайдер) - вынесен выше
-        MDBoxLayout:
-            orientation: "horizontal"
-            size_hint: 1, None
-            height: dp(32)
-            spacing: dp(4)
-            padding: [dp(4), dp(4)]
-
-            MDLabel:
-                id: temp_label
-                text: "25°C"
-                halign: "center"
-                theme_text_color: "Custom"
-                text_color: app.mm_text
-                font_size: min(sp(11), max(sp(9), self.width * 0.25))
-                size_hint_x: None
-                width: dp(44)
-
-            MDSlider:
-                id: temp_slider
-                min: -200
-                max: 500
-                value: 25
-                step: 10
-                size_hint_x: 1
-                on_value: root.on_temperature_change(self.value)
 
         # Панель управления (компактная)
         MDBoxLayout:
             orientation: "vertical"
             size_hint: 1, None
-            height: dp(90)
+            height: dp(96)
             padding: dp(2)
             spacing: dp(4)
 
-            # Кнопки выбора веществ
+            # Кнопки выбора веществ (2 ряда)
             MDBoxLayout:
-                orientation: "horizontal"
+                orientation: "vertical"
                 size_hint: 1, None
-                height: dp(36)
-                spacing: dp(3)
+                height: dp(72)
+                spacing: dp(6)
 
-                MDButton:
-                    id: btn_acid
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.15, 0.18, 0.25, 1)
-                    on_release: root.show_substance_menu("acid")
-                    MDButtonText:
-                        text: "Кисл."
-                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                MDBoxLayout:
+                    orientation: "horizontal"
+                    size_hint: 1, None
+                    height: dp(30)
+                    spacing: dp(4)
 
-                MDButton:
-                    id: btn_base
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.15, 0.18, 0.25, 1)
-                    on_release: root.show_substance_menu("base")
-                    MDButtonText:
-                        text: "Осн."
-                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                    MDButton:
+                        id: btn_acid
+                        style: "filled"
+                        size_hint: 1, None
+                        height: dp(24)
+                        md_bg_color: (0.15, 0.18, 0.25, 1)
+                        on_release: root.show_substance_menu("acid")
+                        MDButtonText:
+                            text: "Кислоты"
+                            font_size: min(sp(11), max(sp(7), root.width * 0.02))
+                            theme_text_color: "Custom"
+                            text_color: app.mm_text
 
-                MDButton:
-                    id: btn_metal
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.15, 0.18, 0.25, 1)
-                    on_release: root.show_substance_menu("metal")
-                    MDButtonText:
-                        text: "Мет."
-                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                    MDButton:
+                        id: btn_base
+                        style: "filled"
+                        size_hint: 1, None
+                        height: dp(24)
+                        md_bg_color: (0.15, 0.18, 0.25, 1)
+                        on_release: root.show_substance_menu("base")
+                        MDButtonText:
+                            text: "Основания"
+                            font_size: min(sp(11), max(sp(7), root.width * 0.02))
+                            theme_text_color: "Custom"
+                            text_color: app.mm_text
 
-                MDButton:
-                    id: btn_other
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.15, 0.18, 0.25, 1)
-                    on_release: root.show_substance_menu("other")
-                    MDButtonText:
-                        text: "Др."
-                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                    MDButton:
+                        id: btn_metal
+                        style: "filled"
+                        size_hint: 1, None
+                        height: dp(24)
+                        md_bg_color: (0.15, 0.18, 0.25, 1)
+                        on_release: root.show_substance_menu("metal")
+                        MDButtonText:
+                            text: "Металлы"
+                            font_size: min(sp(11), max(sp(7), root.width * 0.02))
+                            theme_text_color: "Custom"
+                            text_color: app.mm_text
 
-                MDButton:
-                    id: btn_organic
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.15, 0.18, 0.25, 1)
-                    on_release: root.show_substance_menu("organic")
-                    MDButtonText:
-                        text: "Орг."
-                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                MDBoxLayout:
+                    orientation: "horizontal"
+                    size_hint: 1, None
+                    height: dp(30)
+                    spacing: dp(4)
 
-            # Кнопки действий
-            MDBoxLayout:
-                orientation: "horizontal"
+                    MDButton:
+                        id: btn_other
+                        style: "filled"
+                        size_hint: 1, None
+                        height: dp(24)
+                        md_bg_color: (0.15, 0.18, 0.25, 1)
+                        on_release: root.show_substance_menu("other")
+                        MDButtonText:
+                            text: "Другие"
+                            font_size: min(sp(11), max(sp(7), root.width * 0.02))
+                            theme_text_color: "Custom"
+                            text_color: app.mm_text
+
+                    MDButton:
+                        id: btn_organic
+                        style: "filled"
+                        size_hint: 1, None
+                        height: dp(24)
+                        md_bg_color: (0.15, 0.18, 0.25, 1)
+                        on_release: root.show_substance_menu("organic")
+                        MDButtonText:
+                            text: "Органические"
+                            font_size: min(sp(11), max(sp(7), root.width * 0.02))
+                            theme_text_color: "Custom"
+                            text_color: app.mm_text
+
+                    Widget:
+                        size_hint: 1, 1
+
+            Widget:
                 size_hint: 1, None
-                height: dp(40)
-                spacing: dp(4)
-
-                MDButton:
-                    style: "filled"
-                    size_hint: 2, 1
-                    md_bg_color: app.mm_accent
-                    on_release: root.run_reaction()
-                    MDButtonText:
-                        text: "Смешать!"
-                        font_size: min(sp(13), max(sp(10), root.width * 0.028))
-                        theme_text_color: "Custom"
-                        text_color: (1, 1, 1, 1)
-                        bold: True
-
-                MDButton:
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.2, 0.22, 0.28, 1)
-                    on_release: root.reset_editor()
-                    MDButtonText:
-                        text: "Сброс"
-                        font_size: min(sp(11), max(sp(8), root.width * 0.024))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
-
-                MDButton:
-                    style: "filled"
-                    size_hint: 1, 1
-                    md_bg_color: (0.18, 0.2, 0.26, 1)
-                    on_release: app.go_back()
-                    MDButtonText:
-                        text: "Назад"
-                        font_size: min(sp(11), max(sp(8), root.width * 0.024))
-                        theme_text_color: "Custom"
-                        text_color: app.mm_text
+                height: dp(0)
 
 <AIAssistantScreen>:
     MDBoxLayout:

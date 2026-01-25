@@ -15,7 +15,7 @@ def _safe_element(raw: str) -> str:
     raw = (raw or "").strip()
     if not raw:
         return "C"
-    # normalize (e.g. "CL" -> "Cl")
+    # нормализуем элемент ("CL" -> "Cl")
     if len(raw) == 1:
         return raw.upper()
     return raw[0].upper() + raw[1:].lower()
@@ -28,15 +28,15 @@ def parse_pdb(path: str) -> Molecule:
     atoms: list[Atom] = []
     bonds: set[tuple[int, int]] = set()
 
-    # PDB: HETATM/ATOM lines and CONECT lines
-    # We rely on serial number mapping to atom index
+    # читаем строки ATOM/HETATM и CONECT
+    # используем serial чтобы связать с индексом атома
     serial_to_index: dict[int, int] = {}
 
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             rec = line[:6].strip().upper()
             if rec in ("ATOM", "HETATM"):
-                # Example:
+                # пример строки PDB:
                 # HETATM    1  C1  UNL     1      -0.994  -0.074  -0.021  1.00  0.00           C
                 try:
                     serial = int(line[6:11].strip())
@@ -53,7 +53,7 @@ def parse_pdb(path: str) -> Molecule:
 
                 element = _safe_element(line[76:78].strip() if len(line) >= 78 else "")
                 if not element:
-                    # fallback from label like "C1"
+                    # если элемента нет, берём из label типа "C1"
                     element = _safe_element("".join([c for c in label if c.isalpha()])[:2])
 
                 idx = len(atoms)
@@ -97,7 +97,7 @@ def molecule_formula(atoms: list[Atom]) -> str:
     for a in atoms:
         counts[a.element] = counts.get(a.element, 0) + 1
 
-    # Hill system: C then H then alphabetical
+    # формула по системе Хилла: сначала C, потом H, потом по алфавиту
     parts: list[tuple[str, int]] = []
     if "C" in counts:
         parts.append(("C", counts.pop("C")))

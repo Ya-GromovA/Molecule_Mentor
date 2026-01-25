@@ -9,6 +9,7 @@ from kivy.logger import Logger
 from kivy.metrics import dp
 from kivy.properties import NumericProperty, StringProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
+from kivy.utils import platform
 
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDButton, MDButtonText
@@ -33,6 +34,7 @@ class ModelDownloadScreen(BaseScreen):
         self._download_thread: Optional[threading.Thread] = None
         self._cancel_flag = False
         self._content_built = False
+        self._wakelock = None
     
     def on_pre_enter(self, *args):
         self.title = "Загрузка модели"
@@ -58,7 +60,7 @@ class ModelDownloadScreen(BaseScreen):
             md_bg_color=bg_color,
         )
         
-        # Заголовок
+        # заголовок
         title_label = MDLabel(
             text="ИИ-помощник",
             font_style="Headline",
@@ -71,7 +73,7 @@ class ModelDownloadScreen(BaseScreen):
         )
         root.add_widget(title_label)
         
-        # Описание
+        # описание
         self._status_label = MDLabel(
             text=self.status_text,
             halign="center",
@@ -83,7 +85,7 @@ class ModelDownloadScreen(BaseScreen):
         )
         root.add_widget(self._status_label)
         
-        # Размер модели
+        # размер модели
         size_label = MDLabel(
             text="Размер: ~1.88 ГБ",
             halign="center",
@@ -94,7 +96,7 @@ class ModelDownloadScreen(BaseScreen):
         )
         root.add_widget(size_label)
         
-        # Прогресс-бар контейнер
+        # контейнер прогресс-бара
         progress_container = MDBoxLayout(
             orientation="vertical",
             spacing=dp(8),
@@ -111,7 +113,7 @@ class ModelDownloadScreen(BaseScreen):
         )
         progress_container.add_widget(self._progress_bar)
         
-        # Текст прогресса
+        # текст прогресса
         self._progress_label = MDLabel(
             text="0 МБ / 1880 МБ",
             halign="center",
@@ -124,7 +126,7 @@ class ModelDownloadScreen(BaseScreen):
         
         root.add_widget(progress_container)
         
-        # Сообщение об ошибке
+        # сообщение об ошибке
         self._error_label = MDLabel(
             text="",
             halign="center",
@@ -135,10 +137,10 @@ class ModelDownloadScreen(BaseScreen):
         )
         root.add_widget(self._error_label)
         
-        # Спейсер
+        # спейсер
         root.add_widget(BoxLayout(size_hint_y=1))
         
-        # Кнопки
+        # кнопки
         buttons_box = MDBoxLayout(
             orientation="horizontal",
             spacing=dp(16),
@@ -147,7 +149,7 @@ class ModelDownloadScreen(BaseScreen):
             padding=[dp(16), 0, dp(16), 0],
         )
         
-        # Кнопка "Пропустить"
+        # кнопка "Пропустить"
         self._skip_btn = MDButton(
             style="outlined",
             size_hint_x=0.5,
@@ -156,7 +158,7 @@ class ModelDownloadScreen(BaseScreen):
         self._skip_btn.add_widget(MDButtonText(text="Пропустить"))
         buttons_box.add_widget(self._skip_btn)
         
-        # Кнопка "Скачать"
+        # кнопка "Скачать"
         self._download_btn = MDButton(
             style="filled",
             size_hint_x=0.5,
@@ -167,7 +169,7 @@ class ModelDownloadScreen(BaseScreen):
         
         root.add_widget(buttons_box)
         
-        # Примечание
+        # примечание
         note_label = MDLabel(
             text="Без модели ИИ-помощник будет работать только онлайн",
             halign="center",
@@ -193,7 +195,7 @@ class ModelDownloadScreen(BaseScreen):
         root.bind(width=_reflow_status)
         Clock.schedule_once(lambda *_: _reflow_status(), 0)
         
-        # Привязка свойств
+        # привязка свойств
         self.bind(progress=self._update_progress_ui)
         self.bind(status_text=self._update_status_ui)
         self.bind(download_error=self._update_error_ui)
@@ -216,7 +218,7 @@ class ModelDownloadScreen(BaseScreen):
     def _update_buttons_ui(self, *args):
         if hasattr(self, "_download_btn") and hasattr(self, "_skip_btn"):
             if self.is_downloading:
-                # Меняем кнопку "Скачать" на "Отмена"
+                # меняем кнопку "Скачать" на "Отмена"
                 self._download_btn.clear_widgets()
                 cancel_text = MDButtonText(text="Отмена", pos_hint={"center_x": 0.5, "center_y": 0.5})
                 self._download_btn.add_widget(cancel_text)
@@ -249,7 +251,8 @@ class ModelDownloadScreen(BaseScreen):
         self.status_text = "Скачивание модели..."
         self.progress = 0
         self.downloaded_mb = 0
-        # Сбрасываем прогресс-бар на 0 (determinate mode, без анимации)
+        self._acquire_wakelock()
+        # сбрасываем прогресс-бар на 0 (без анимации)
         if hasattr(self, "_progress_bar"):
             self._progress_bar.value = 0
         
@@ -257,7 +260,7 @@ class ModelDownloadScreen(BaseScreen):
             if self._cancel_flag:
                 raise Exception("Cancelled")
             
-            # Обновляем UI в главном потоке
+            # обновляем UI в главном потоке
             def update(dt):
                 self.downloaded_mb = downloaded / (1024 * 1024)
                 self.total_mb = total / (1024 * 1024)
@@ -268,7 +271,7 @@ class ModelDownloadScreen(BaseScreen):
         
         def download_work():
             try:
-                # Импортируем здесь, чтобы избежать circular import
+                # импортируем здесь, чтобы избежать циклического импорта
                 from utils.model_bootstrap import download_model
                 
                 download_model(OFFLINE_MODEL_NAME, progress_callback)
@@ -279,8 +282,9 @@ class ModelDownloadScreen(BaseScreen):
                     self.progress = 100
                     if hasattr(self, "_progress_bar"):
                         self._progress_bar.value = 1.0  # 100%
+                    self._release_wakelock()
                     self._reset_quiz_progress_once()
-                    # Автоматически переходим на главный экран через 1.5 сек
+                    # автоматически переходим на главный экран через 1.5 сек
                     Clock.schedule_once(lambda dt: self._finish_and_go_home(), 1.5)
                 
                 Clock.schedule_once(on_success, 0)
@@ -294,6 +298,7 @@ class ModelDownloadScreen(BaseScreen):
                     else:
                         self.status_text = "Ошибка скачивания"
                         self.download_error = str(e)[:100]
+                    self._release_wakelock()
                 
                 Clock.schedule_once(on_error, 0)
         
@@ -304,14 +309,50 @@ class ModelDownloadScreen(BaseScreen):
         """Отмена скачивания."""
         self._cancel_flag = True
         self.status_text = "Отмена..."
+        self._release_wakelock()
     
     def _finish_and_go_home(self):
         """Завершить и перейти на главный экран."""
         app = self.get_app()
-        # Перезапускаем подготовку модели
+        # перезапускаем подготовку модели
         if hasattr(app, "_prepare_offline_model_async"):
             app._prepare_offline_model_async()
         app.open_home()
+
+    def _acquire_wakelock(self) -> None:
+        if platform != "android":
+            return
+        try:
+            if self._wakelock and self._wakelock.isHeld():
+                return
+        except Exception:
+            pass
+
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Context = autoclass("android.content.Context")
+            PowerManager = autoclass("android.os.PowerManager")
+
+            activity = PythonActivity.mActivity
+            pm = activity.getSystemService(Context.POWER_SERVICE)
+            self._wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "moleculementor:download")
+            self._wakelock.setReferenceCounted(False)
+            self._wakelock.acquire()
+        except Exception as e:
+            Logger.exception(f"[ModelDownload] wakelock acquire failed: {e}")
+
+    def _release_wakelock(self) -> None:
+        if platform != "android":
+            return
+        if not self._wakelock:
+            return
+        try:
+            if self._wakelock.isHeld():
+                self._wakelock.release()
+        except Exception as e:
+            Logger.exception(f"[ModelDownload] wakelock release failed: {e}")
 
     def _reset_quiz_progress_once(self) -> None:
         """Сбрасывает попытки тестов только при первом скачивании модели."""

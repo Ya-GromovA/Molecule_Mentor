@@ -7,7 +7,8 @@ from typing import Optional
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle
 from kivy.logger import Logger
-from kivy.metrics import dp
+from kivy.core.window import Window
+from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import Screen
 
@@ -18,9 +19,9 @@ from utils.molecule_parser import molecule_formula
 from utils.visualizer_3d import Visualizer3D
 
 
-# Базовые вещества для редактора реакций
+# базовые вещества для редактора реакций
 SUBSTANCES = {
-    # Кислоты
+    # кислоты
     "HCl": {
         "name": "Соляная кислота",
         "category": "acid",
@@ -39,7 +40,7 @@ SUBSTANCES = {
         "atoms": [("N", 0, 0, 0), ("O", 1.2, 0, 0), ("O", -0.6, 1.0, 0), ("O", -0.6, -1.0, 0), ("H", -1.5, 1.0, 0)],
         "bonds": [(0, 1), (0, 2), (0, 3), (2, 4)],
     },
-    # Основания
+    # основания
     "NaOH": {
         "name": "Гидроксид натрия",
         "category": "base",
@@ -58,7 +59,7 @@ SUBSTANCES = {
         "atoms": [("Ca", 0, 0, 0), ("O", 2.0, 0.5, 0), ("H", 3.0, 0.5, 0), ("O", 2.0, -0.5, 0), ("H", 3.0, -0.5, 0)],
         "bonds": [(0, 1), (1, 2), (0, 3), (3, 4)],
     },
-    # Простые вещества и оксиды
+    # простые вещества и оксиды
     "H2O": {
         "name": "Вода",
         "category": "other",
@@ -77,7 +78,7 @@ SUBSTANCES = {
         "atoms": [("N", 0, 0, 0), ("H", 1.0, 0, 0), ("H", -0.5, 0.87, 0), ("H", -0.5, -0.87, 0)],
         "bonds": [(0, 1), (0, 2), (0, 3)],
     },
-    # Металлы (упрощённо - как атомы)
+    # металлы (упрощённо как атомы)
     "Na": {
         "name": "Натрий",
         "category": "metal",
@@ -102,7 +103,7 @@ SUBSTANCES = {
         "atoms": [("Fe", 0, 0, 0)],
         "bonds": [],
     },
-    # Органика
+    # органика
     "CH3OH": {
         "name": "Метанол",
         "category": "organic",
@@ -123,9 +124,9 @@ SUBSTANCES = {
     },
 }
 
-# Известные реакции для редактора
+# известные реакции для редактора
 KNOWN_REACTIONS_EDITOR = {
-    # Кислота + основание -> соль + вода
+    # кислота + основание -> соль + вода
     frozenset(["HCl", "NaOH"]): {
         "possible": True,
         "min_temp": -50,
@@ -150,7 +151,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Реакция нейтрализации серной кислоты. Сильно экзотермическая!",
         "effect": "heat",
     },
-    # Металл + кислота -> соль + водород
+    # металл + кислота -> соль + водород
     frozenset(["Zn", "HCl"]): {
         "possible": True,
         "min_temp": 0,
@@ -183,7 +184,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "ОЧЕНЬ ОПАСНО! Калий реагирует ещё активнее натрия. Взрыв и пламя!",
         "effect": "explosion",
     },
-    # Карбонаты + кислоты
+    # карбонаты + кислоты
     frozenset(["CO2", "NaOH"]): {
         "possible": True,
         "min_temp": -50,
@@ -200,7 +201,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Обратимая реакция. Угольная кислота быстро распадается обратно.",
         "effect": "none",
     },
-    # Аммиак
+    # аммиак
     frozenset(["NH3", "HCl"]): {
         "possible": True,
         "min_temp": -50,
@@ -217,7 +218,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Аммиак хорошо растворяется в воде. Резкий запах!",
         "effect": "none",
     },
-    # Этерификация
+    # этерификация
     frozenset(["CH3COOH", "C2H5OH"]): {
         "possible": True,
         "min_temp": 60,
@@ -226,8 +227,8 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Реакция этерификации. Требует нагрева и катализатора (H2SO4). Приятный фруктовый запах!",
         "effect": "none",
     },
-    # ===== 3-КОМПОНЕНТНЫЕ РЕАКЦИИ =====
-    # Важно: при 3+ компонентах часто идут конкурирующие реакции
+    # ===== 3-компонентные реакции =====
+    # при 3+ компонентах бывает несколько вариантов
     frozenset(["HCl", "Zn", "NH3"]): {
         "possible": True,
         "min_temp": 0,
@@ -340,7 +341,7 @@ KNOWN_REACTIONS_EDITOR = {
         ),
         "effect": "heat",
     },
-    # Невозможные реакции
+    # невозможные реакции
     frozenset(["H2O", "NaOH"]): {
         "possible": False,
         "description": "NaOH уже растворён в воде. Химической реакции не происходит, только растворение.",
@@ -374,7 +375,7 @@ class ReactionEditorScreen(Screen):
         self._highlight_break: list[tuple[int, int]] = []
         self._highlight_form: list[tuple[int, int]] = []
         
-        # Группы атомов для независимого вращения молекул
+        # группы атомов для независимого вращения
         self._molecule_groups: list[list[int]] = []
         
         self._temperature: float = 25.0
@@ -402,7 +403,7 @@ class ReactionEditorScreen(Screen):
 
         host.clear_widgets()
 
-        # Контейнер для 3D-вьювера
+        # контейнер для 3D-вьювера
         card = BoxLayout(
             orientation="vertical",
             padding=[dp(10), dp(10), dp(10), dp(10)],
@@ -421,7 +422,7 @@ class ReactionEditorScreen(Screen):
         card.add_widget(self._viewer)
         host.add_widget(card)
 
-        # Сброс состояния
+        # сброс состояния
         self._reset_all()
 
     def _reset_all(self) -> None:
@@ -430,12 +431,12 @@ class ReactionEditorScreen(Screen):
         self._current_bonds = []
         self._highlight_break = []
         self._highlight_form = []
-        self._molecule_groups = []  # Сброс групп
+        self._molecule_groups = []  # сброс групп
         self._temperature = 25.0
         self._added_substances = []
         self._reaction_done = False
         
-        # Сброс слайдера
+        # сброс слайдера
         temp_slider = self.ids.get("temp_slider")
         if temp_slider:
             temp_slider.value = 25.0
@@ -452,7 +453,7 @@ class ReactionEditorScreen(Screen):
                 self._current_bonds,
                 highlight_break=self._highlight_break,
                 highlight_form=self._highlight_form,
-                groups=self._molecule_groups,  # Передаём группы для независимого вращения
+                groups=self._molecule_groups,  # группы для независимого вращения
             )
 
     def _update_info(self) -> None:
@@ -534,6 +535,8 @@ class ReactionEditorScreen(Screen):
             if data["category"] == category:
                 menu_items.append({
                     "text": f"{data['name']} ({key})",
+                    "font_size": sp(12),
+                    "height": dp(34),
                     "on_release": lambda k=key: self._add_substance(k),
                 })
         
@@ -541,7 +544,7 @@ class ReactionEditorScreen(Screen):
             self._show_message(f"Нет веществ в категории")
             return
         
-        # Находим кнопку-caller
+        # находим кнопку-caller
         caller = None
         if category == "acid":
             caller = self.ids.get("btn_acid")
@@ -557,9 +560,15 @@ class ReactionEditorScreen(Screen):
         if not caller:
             return
         
+        hor_growth = "right" if caller.center_x < Window.width * 0.5 else "left"
         self._substance_menu = MDDropdownMenu(
             caller=caller,
             items=menu_items,
+            width=min(dp(260), Window.width - dp(32)),
+            position="bottom",
+            hor_growth=hor_growth,
+            ver_growth="up",
+            max_height=max(dp(120), Window.height - dp(220)),
         )
         self._substance_menu.open()
 
@@ -586,28 +595,28 @@ class ReactionEditorScreen(Screen):
         
         substance = SUBSTANCES[substance_key]
         
-        # Вычисляем смещение (компактнее для телефона)
+        # считаем смещение (компактнее для телефона)
         if self._current_atoms:
             max_x = max(a.x for a in self._current_atoms)
-            offset_x = max_x + 2.5  # Уменьшено с 4.0 для компактности
+            offset_x = max_x + 2.5  # уменьшили для компактности
         else:
             offset_x = 0.0
         
-        # Добавляем атомы
+        # добавляем атомы
         base_idx = len(self._current_atoms)
-        new_group_indices = []  # Индексы атомов новой молекулы
+        new_group_indices = []  # индексы атомов новой молекулы
         
         for (element, x, y, z) in substance["atoms"]:
             new_atom = Atom(element=element, x=x + offset_x, y=y, z=z)
             self._current_atoms.append(new_atom)
             new_group_indices.append(len(self._current_atoms) - 1)
         
-        # Добавляем связи
+        # добавляем связи
         for (i, j) in substance["bonds"]:
             self._current_bonds.append((base_idx + i, base_idx + j))
             self._highlight_form.append(bond_key(base_idx + i, base_idx + j))
         
-        # Создаём группу для независимого вращения этой молекулы
+        # создаём группу для вращения этой молекулы
         self._molecule_groups.append(new_group_indices)
         
         self._added_substances.append(substance_key)
@@ -616,7 +625,7 @@ class ReactionEditorScreen(Screen):
         self._update_info()
         self._show_message(f"+ {substance['name']}")
         
-        # Убираем подсветку
+        # убираем подсветку
         def clear_highlight(*_):
             self._highlight_form = []
             self._update_viewer()
@@ -634,7 +643,7 @@ class ReactionEditorScreen(Screen):
         
         self._show_message("Смешиваем...")
         
-        # Проверяем известные реакции
+        # проверяем известные реакции
         substances_set = frozenset(self._added_substances)
         known = KNOWN_REACTIONS_EDITOR.get(substances_set)
         
@@ -667,7 +676,7 @@ class ReactionEditorScreen(Screen):
             )
             return
         
-        # Реакция идёт!
+        # реакция идёт!
         self._reaction_done = True
         self._animate_reaction(reaction_info, effect)
 
@@ -677,7 +686,7 @@ class ReactionEditorScreen(Screen):
         products = reaction_info.get("products", "")
         description = reaction_info.get("description", "")
         
-        # Сообщение об эффекте
+        # сообщение об эффекте
         effect_messages = {
             "heat": "Выделяется тепло!",
             "gas": "Выделяется газ!",
@@ -687,14 +696,14 @@ class ReactionEditorScreen(Screen):
         }
         self._show_message(effect_messages.get(effect, "Реакция идёт..."))
         
-        # Фаза 1: разрыв связей
+        # фаза 1: разрыв связей
         if self._current_bonds:
             num_to_break = max(1, len(self._current_bonds) // 3)
             bonds_to_break = random.sample(self._current_bonds, min(num_to_break, len(self._current_bonds)))
             self._highlight_break = [bond_key(b[0], b[1]) for b in bonds_to_break]
             self._update_viewer()
         
-        # Фаза 2: удаление связей
+        # фаза 2: удаление связей
         def phase2(*_):
             for b in list(self._highlight_break):
                 bond = b if b in self._current_bonds else (b[1], b[0])
@@ -708,7 +717,7 @@ class ReactionEditorScreen(Screen):
         
         Clock.schedule_once(phase2, 0.7)
         
-        # Фаза 3: образование новых связей
+        # фаза 3: образование новых связей
         def phase3(*_):
             new_bonds = []
             for i, atom_i in enumerate(self._current_atoms):
@@ -730,7 +739,7 @@ class ReactionEditorScreen(Screen):
         
         Clock.schedule_once(phase3, 1.4)
         
-        # Фаза 4: результат
+        # фаза 4: результат
         def phase4(*_):
             self._highlight_form = []
             self._highlight_break = []
@@ -770,21 +779,21 @@ class ReactionEditorScreen(Screen):
             try:
                 answer = self.app._ai_engine.ask(prompt, verify=False)
                 
-                # Проверка на галлюцинации и бред
+                # проверка на галлюцинации и бред
                 answer_lower = answer.lower()
                 
-                # Признаки галлюцинаций
+                # признаки галлюцинаций
                 hallucination_markers = [
                     "зиммерман", "реакция иванова", "реакция петрова", "метод сидорова",
                     "именная реакция", "открыта в", "назван в честь",
                 ]
                 has_hallucination = any(m in answer_lower for m in hallucination_markers)
                 
-                # Проверка на бессмысленные "формулы" (кириллица в формуле = бред)
+                # проверка на бессмысленные "формулы" (кириллица в формуле = бред)
                 fake_formula_pattern = re.compile(r'[А-Яа-яЁё][а-яё]?\d*\s*[\+\-\>]')  # "Зм + 2Н4Кл"
                 has_fake_formula = bool(fake_formula_pattern.search(answer))
                 
-                # Повторяющийся текст (признак зависания модели)
+                # повторяющийся текст (признак зависания модели)
                 words = answer_lower.split()
                 if len(words) > 10:
                     repeated = sum(1 for i in range(len(words) - 3) if words[i:i+3] == words[i+3:i+6])
@@ -885,4 +894,4 @@ class ReactionEditorScreen(Screen):
     def reset_editor(self) -> None:
         """Сброс редактора к начальному состоянию."""
         self._reset_all()
-        self._clear_message()  # Возвращаем стандартный заголовок
+        self._clear_message()  # возвращаем стандартный заголовок

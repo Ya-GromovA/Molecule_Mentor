@@ -45,7 +45,7 @@ class OptionRow(ButtonBehavior, BoxLayout):
         self._review_state: Optional[str] = None  # None, "correct", "wrong", "missed"
         self._disabled = False
         
-        # Цвета
+        # цвета
         self._bg_normal = (0.12, 0.14, 0.22, 1)
         self._bg_selected = (0.2, 0.35, 0.5, 1)
         self._bg_correct = (0.15, 0.45, 0.25, 1)  # зелёный
@@ -58,11 +58,11 @@ class OptionRow(ButtonBehavior, BoxLayout):
         
         self.bind(pos=self._update_rect, size=self._update_rect)
         
-        # Кружок-индикатор (radio button style)
+        # кружок-индикатор (как radio button)
         self._indicator = BoxLayout(size_hint=(None, None), size=(dp(24), dp(24)))
         self._indicator.pos_hint = {"center_y": 0.5}
         
-        # Текст
+        # текст
         self._label = MDLabel(
             text=text,
             halign="left",
@@ -74,7 +74,7 @@ class OptionRow(ButtonBehavior, BoxLayout):
         self.add_widget(self._indicator)
         self.add_widget(self._label)
         
-        # Биндим позицию индикатора один раз
+        # биндим позицию индикатора один раз
         self._indicator.bind(pos=self._on_indicator_layout, size=self._on_indicator_layout)
         
         self._update_visuals()
@@ -93,10 +93,10 @@ class OptionRow(ButtonBehavior, BoxLayout):
         self._indicator.canvas.clear()
         with self._indicator.canvas:
             if self._selected:
-                # Внешний круг (синий)
+                # внешний круг (синий)
                 Color(0.3, 0.6, 0.9, 1)
                 RoundedRectangle(pos=self._indicator.pos, size=self._indicator.size, radius=[dp(12)])
-                # Внутренний круг (белый)
+                # внутренний круг (белый)
                 Color(1, 1, 1, 1)
                 inner_size = (dp(10), dp(10))
                 inner_pos = (
@@ -105,10 +105,10 @@ class OptionRow(ButtonBehavior, BoxLayout):
                 )
                 RoundedRectangle(pos=inner_pos, size=inner_size, radius=[dp(5)])
             else:
-                # Пустой круг (серая обводка)
+                # пустой круг (серая обводка)
                 Color(0.5, 0.55, 0.65, 1)
                 RoundedRectangle(pos=self._indicator.pos, size=self._indicator.size, radius=[dp(12)])
-                # Внутренняя часть (цвет фона)
+                # внутренняя часть (цвет фона)
                 Color(*self._bg_normal)
                 inner_size = (dp(20), dp(20))
                 inner_pos = (
@@ -121,7 +121,7 @@ class OptionRow(ButtonBehavior, BoxLayout):
         """Обновляем цвет фона и индикатор."""
         self.canvas.before.clear()
         with self.canvas.before:
-            # Определяем цвет фона
+            # определяем цвет фона
             if self._review_state == "correct":
                 Color(*self._bg_correct)
             elif self._review_state == "wrong":
@@ -232,9 +232,9 @@ class QuizScreen(BaseScreen):
             text_color=app.mm_text,
         ))
 
-        # сохраняем строки вариантов по вопросу, чтобы правильно переключать
+        # сохраняем строки вариантов, чтобы правильно переключать
         self._rows: list[list[OptionRow]] = []
-        # лейблы для пояснений (показываются после проверки)
+        # лейблы для пояснений (после проверки)
         self._explanation_labels: list[MDLabel] = []
 
         for qidx, q in enumerate(self._questions):
@@ -263,7 +263,7 @@ class QuizScreen(BaseScreen):
 
             self._rows.append(options)
             
-            # Лейбл для пояснения (скрыт по умолчанию)
+            # лейбл для пояснения (скрыт по умолчанию)
             explanation_label = MDLabel(
                 text="",
                 adaptive_height=True,
@@ -317,13 +317,13 @@ class QuizScreen(BaseScreen):
         self._result_label.text = ""
         self._submitted = False
         
-        # Сбрасываем состояние проверки и включаем выбор
+        # сбрасываем состояние проверки и включаем выбор
         for options in self._rows:
             for opt_row in options:
                 opt_row.set_review_state(None)
                 opt_row.set_clickable(True)
         
-        # Скрываем пояснения
+        # скрываем пояснения
         for lbl in self._explanation_labels:
             lbl.text = ""
             lbl.height = 0
@@ -372,7 +372,7 @@ class QuizScreen(BaseScreen):
         self._result_label.text = f"Результат: {score}/{total} ({percent:.0f}%)"
         self.get_app().toast("Результат сохранён")
         
-        # Показываем правильные/неправильные ответы
+        # показываем правильные/неправильные ответы
         self._show_review()
     
     def _show_review(self):
@@ -385,23 +385,23 @@ class QuizScreen(BaseScreen):
             options = self._rows[qidx]
             
             for oidx, opt_row in enumerate(options):
-                # Отключаем возможность менять ответы
+                # отключаем возможность менять ответы
                 opt_row.set_clickable(False)
                 
                 if oidx == chosen and oidx == correct_idx:
-                    # Выбран правильный ответ
+                    # выбран правильный ответ
                     opt_row.set_review_state("correct")
                 elif oidx == chosen and oidx != correct_idx:
-                    # Выбран неправильный ответ
+                    # выбран неправильный ответ
                     opt_row.set_review_state("wrong")
                 elif oidx == correct_idx:
-                    # Правильный ответ, но не был выбран
+                    # правильный ответ, но не был выбран
                     opt_row.set_review_state("missed")
                 else:
-                    # Обычный невыбранный вариант
+                    # обычный невыбранный вариант
                     opt_row.set_review_state(None)
             
-            # Показываем пояснение
+            # показываем пояснение
             explanation_lbl = self._explanation_labels[qidx]
             is_correct = (chosen == correct_idx)
             
@@ -419,6 +419,6 @@ class QuizScreen(BaseScreen):
             explanation_lbl.text = explanation_text
             explanation_lbl.text_color = color
             explanation_lbl.opacity = 1
-            # Динамическая высота
+            # динамическая высота
             explanation_lbl.texture_update()
             explanation_lbl.height = explanation_lbl.texture_size[1] + dp(16)
