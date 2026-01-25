@@ -32,8 +32,16 @@ assets/models/*.gguf*
 *.log
 *.tar.gz
 *.keystore
+
+# Presentation files (keep locally, not in repo)
 *.pptx
 ~$*.pptx
+*.pdf
+create_presentation.py
+generate_project_pdf.py
+CODE_SNIPPETS_FOR_PRESENTATION.txt
+ИНСТРУКЦИЯ_ПО_СКРИНШОТАМ.txt
+models_temp/
 
 # Buildozer
 .buildozer/
