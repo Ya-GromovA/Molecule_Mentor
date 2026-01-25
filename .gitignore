@@ -43,6 +43,9 @@ CODE_SNIPPETS_FOR_PRESENTATION.txt
 ИНСТРУКЦИЯ_ПО_СКРИНШОТАМ.txt
 models_temp/
 
+# Test/debug scripts (not needed in repo)
+test_*.py
+
 # Buildozer
 .buildozer/
 bin/
