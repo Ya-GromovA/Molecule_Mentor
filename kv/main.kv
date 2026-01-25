@@ -1,4 +1,4 @@
-#:kivy 2.3.1
+#:kivy 2.3.0
 #:import Window kivy.core.window.Window
 
 # ===== Screen templates (single KV file) =====
@@ -409,16 +409,21 @@
                     size: dp(28), dp(24)
                     on_release: root.apply_heat()
 
-            # Строка 3: Кнопки управления (масштабируемые по ширине)
-            BoxLayout:
-                orientation: "horizontal"
+            # Строка 3: Кнопки управления (адаптивные по ширине)
+            MDGridLayout:
+                cols: 2
+                rows: 2
                 size_hint: 1, None
-                height: dp(32)
+                height: dp(68)
                 spacing: dp(4)
+                row_force_default: True
+                row_default_height: dp(30)
+                col_force_default: False
 
                 MDButton:
                     style: "tonal"
-                    size_hint_x: 0.22
+                    size_hint: 1, None
+                    height: dp(30)
                     on_release: root.toggle_bond_mode()
                     MDButtonText:
                         id: mode_label
@@ -428,7 +433,8 @@
                 MDButton:
                     id: reagent_btn
                     style: "outlined"
-                    size_hint_x: 0.28
+                    size_hint: 1, None
+                    height: dp(30)
                     on_release: root.show_reagent_menu()
                     MDButtonText:
                         text: "+ Реагент"
@@ -436,7 +442,8 @@
 
                 MDButton:
                     style: "outlined"
-                    size_hint_x: 0.22
+                    size_hint: 1, None
+                    height: dp(30)
                     on_release: root.reset_molecule()
                     MDButtonText:
                         text: "Сброс"
@@ -444,7 +451,8 @@
 
                 MDButton:
                     style: "filled"
-                    size_hint_x: 0.18
+                    size_hint: 1, None
+                    height: dp(30)
                     md_bg_color: app.mm_primary
                     on_release: root.identify_molecule()
                     MDButtonText:
@@ -524,97 +532,113 @@
                 text_color: (0.6, 0.6, 0.7, 1)
                 font_size: sp(10)
 
+        # Температура (компактный слайдер) - вынесен выше
+        MDBoxLayout:
+            orientation: "horizontal"
+            size_hint: 1, None
+            height: dp(32)
+            spacing: dp(4)
+            padding: [dp(4), dp(4)]
+
+            MDLabel:
+                id: temp_label
+                text: "25°C"
+                halign: "center"
+                theme_text_color: "Custom"
+                text_color: app.mm_text
+                font_size: min(sp(11), max(sp(9), self.width * 0.25))
+                size_hint_x: None
+                width: dp(44)
+
+            MDSlider:
+                id: temp_slider
+                min: -200
+                max: 500
+                value: 25
+                step: 10
+                size_hint_x: 1
+                on_value: root.on_temperature_change(self.value)
+
         # Панель управления (компактная)
         MDBoxLayout:
             orientation: "vertical"
             size_hint: 1, None
-            height: dp(115)
+            height: dp(90)
             padding: dp(2)
-            spacing: dp(2)
+            spacing: dp(4)
 
-            # Температура (компактный слайдер)
+            # Кнопки выбора веществ
             MDBoxLayout:
                 orientation: "horizontal"
                 size_hint: 1, None
-                height: dp(26)
-                spacing: dp(2)
-
-                MDLabel:
-                    id: temp_label
-                    text: "25°C"
-                    halign: "center"
-                    theme_text_color: "Custom"
-                    text_color: app.mm_text
-                    font_size: sp(10)
-                    size_hint_x: None
-                    width: dp(40)
-
-                MDSlider:
-                    id: temp_slider
-                    min: -200
-                    max: 500
-                    value: 25
-                    step: 10
-                    size_hint_x: 1
-                    on_value: root.on_temperature_change(self.value)
-
-            # Кнопки выбора веществ (2 ряда для телефона)
-            MDBoxLayout:
-                orientation: "horizontal"
-                size_hint: 1, None
-                height: dp(28)
-                spacing: dp(2)
+                height: dp(36)
+                spacing: dp(3)
 
                 MDButton:
                     id: btn_acid
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.15, 0.18, 0.25, 1)
                     on_release: root.show_substance_menu("acid")
                     MDButtonText:
                         text: "Кисл."
-                        font_size: sp(9)
+                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
                 MDButton:
                     id: btn_base
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.15, 0.18, 0.25, 1)
                     on_release: root.show_substance_menu("base")
                     MDButtonText:
                         text: "Осн."
-                        font_size: sp(9)
+                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
                 MDButton:
                     id: btn_metal
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.15, 0.18, 0.25, 1)
                     on_release: root.show_substance_menu("metal")
                     MDButtonText:
                         text: "Мет."
-                        font_size: sp(9)
+                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
                 MDButton:
                     id: btn_other
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.15, 0.18, 0.25, 1)
                     on_release: root.show_substance_menu("other")
                     MDButtonText:
                         text: "Др."
-                        font_size: sp(9)
+                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
                 MDButton:
                     id: btn_organic
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.15, 0.18, 0.25, 1)
                     on_release: root.show_substance_menu("organic")
                     MDButtonText:
                         text: "Орг."
-                        font_size: sp(9)
+                        font_size: min(sp(10), max(sp(7), root.width * 0.022))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
             # Кнопки действий
             MDBoxLayout:
                 orientation: "horizontal"
                 size_hint: 1, None
-                height: dp(32)
+                height: dp(40)
                 spacing: dp(4)
 
                 MDButton:
@@ -624,26 +648,32 @@
                     on_release: root.run_reaction()
                     MDButtonText:
                         text: "Смешать!"
-                        font_size: sp(12)
+                        font_size: min(sp(13), max(sp(10), root.width * 0.028))
                         theme_text_color: "Custom"
                         text_color: (1, 1, 1, 1)
                         bold: True
 
                 MDButton:
-                    style: "outlined"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.2, 0.22, 0.28, 1)
                     on_release: root.reset_editor()
                     MDButtonText:
                         text: "Сброс"
-                        font_size: sp(10)
+                        font_size: min(sp(11), max(sp(8), root.width * 0.024))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
                 MDButton:
-                    style: "tonal"
+                    style: "filled"
                     size_hint: 1, 1
+                    md_bg_color: (0.18, 0.2, 0.26, 1)
                     on_release: app.go_back()
                     MDButtonText:
                         text: "Назад"
-                        font_size: sp(10)
+                        font_size: min(sp(11), max(sp(8), root.width * 0.024))
+                        theme_text_color: "Custom"
+                        text_color: app.mm_text
 
 <AIAssistantScreen>:
     MDBoxLayout:
@@ -719,15 +749,15 @@
                     # - на узких уменьшается, чтобы "Главная" влезла полностью
                     font_size: min(dp(34), max(dp(16), root.width * 0.03))
 
-            # --- Right: status + info (fixed width) ---
+            # --- Right: status + info (adaptive width) ---
             BoxLayout:
                 orientation: "horizontal"
                 size_hint_x: None
-                width: min(dp(180), root.width * 0.28)
+                width: min(dp(200), root.width * 0.32)
                 size_hint_y: None
                 height: dp(60)
                 padding: 0, dp(6), 0, 0
-                spacing: dp(6)
+                spacing: dp(4)
                 pos_hint: {"center_y": 0.5}
 
                 MDLabel:
@@ -739,7 +769,13 @@
                         (0.20, 0.85, 0.35, 1) if app.ai_status == "ONLINE" \
                         else (0.15, 0.65, 0.95, 1) if app.ai_status == "OFFLINE" \
                         else (0.85, 0.85, 0.85, 1)
-                    font_size: dp(14)
+                    max_lines: 1
+                    shorten: False
+                    text_size: (None, None)
+                    # Масштабируемый шрифт: уменьшается на узких экранах
+                    font_size: min(dp(13), max(dp(8), root.width * 0.018))
+                    size_hint_x: None
+                    width: self.texture_size[0] if self.texture else dp(80)
                     size_hint_y: 1
 
                 MDIconButton:

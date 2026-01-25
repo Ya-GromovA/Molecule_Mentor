@@ -385,7 +385,24 @@ class ReactionViewerScreen(BaseScreen):
         if not self._rxn or not self._rxn.frames:
             return 0
         idx = max(0, min(self._state.frame_idx, len(self._rxn.frames) - 1))
-        return int(self._rxn.frames[idx].stage_index or 0)
+        steps = self._rxn.steps or []
+        frame = self._rxn.frames[idx]
+
+        stage_idx = None
+        try:
+            if frame.stage_index is not None:
+                stage_idx = int(frame.stage_index)
+        except Exception:
+            stage_idx = None
+
+        if not steps:
+            return int(stage_idx or 0)
+
+        if stage_idx is None:
+            total = max(len(self._rxn.frames) - 1, 1)
+            return int(round((idx / total) * (len(steps) - 1)))
+
+        return max(0, min(stage_idx, len(steps) - 1))
 
     def _render_step(self) -> None:
         if not self._rxn:

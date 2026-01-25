@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.logger import Logger
 from kivy.metrics import dp
@@ -558,6 +559,7 @@ class MoleculeEditorScreen(Screen):
         self._reagent_menu = MDDropdownMenu(
             caller=reagent_btn,
             items=menu_items,
+            width=min(dp(320), Window.width - dp(24)),
         )
         self._reagent_menu.open()
 

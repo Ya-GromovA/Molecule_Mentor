@@ -7,6 +7,7 @@ from typing import Optional, Callable
 from kivy.app import App
 
 # URL для скачивания модели (HuggingFace)
+OFFLINE_MODEL_NAME = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 MODEL_SIZE_BYTES = 2_019_377_408  # ~1.88 GB
 

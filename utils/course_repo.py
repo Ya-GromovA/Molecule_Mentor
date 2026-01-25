@@ -171,3 +171,17 @@ class CourseRepo:
                 return (0.0, 0.0, 0)
 
         return (float(r["best_percent"]), float(r["last_percent"]), int(r["attempts_count"]))
+
+    def reset_all_quiz_progress(self) -> None:
+        """Сбрасывает попытки и прогресс тестов для всех курсов."""
+        with self._conn() as c:
+            t = c.execute(
+                "select name from sqlite_master where type='table' and name='mm_course_progress'"
+            ).fetchone()
+            if not t:
+                return
+
+            c.execute("delete from mm_quiz_attempts")
+            c.execute(
+                "update mm_course_progress set best_percent=0, last_percent=0, attempts_count=0, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+            )

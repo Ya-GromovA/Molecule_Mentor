@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 
@@ -22,11 +23,25 @@ log = logging.getLogger(__name__)
 
 class AIAssistantScreen(BaseScreen):
     _send_text: Optional[MDButtonText] = None
+    _prev_softinput_mode: Optional[str] = None
 
     def on_pre_enter(self, *args):
         self.title = "ИИ-помощник"
         super().on_pre_enter(*args)
+        self._prev_softinput_mode = getattr(Window, "softinput_mode", None)
+        try:
+            Window.softinput_mode = "resize"
+        except Exception:
+            pass
         Clock.schedule_once(lambda *_: self._render(), 0)
+
+    def on_pre_leave(self, *args):
+        if self._prev_softinput_mode is not None:
+            try:
+                Window.softinput_mode = self._prev_softinput_mode
+            except Exception:
+                pass
+        return super().on_pre_leave(*args)
 
     def _render(self):
         app = self.get_app()

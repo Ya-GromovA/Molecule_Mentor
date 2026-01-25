@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Optional
 
 from kivy.clock import Clock
+from kivy.logger import Logger
 from kivy.metrics import dp
 from kivy.properties import NumericProperty, StringProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
@@ -77,6 +79,7 @@ class ModelDownloadScreen(BaseScreen):
             text_color=text2_color,
             size_hint_y=None,
             height=dp(80),
+            max_lines=2,
         )
         root.add_widget(self._status_label)
         
@@ -102,6 +105,7 @@ class ModelDownloadScreen(BaseScreen):
         
         self._progress_bar = MDLinearProgressIndicator(
             value=0,
+            type="determinate",
             size_hint_y=None,
             height=dp(8),
         )
@@ -177,6 +181,17 @@ class ModelDownloadScreen(BaseScreen):
         root.add_widget(note_label)
         
         self.add_widget(root)
+
+        def _reflow_status(*_):
+            if not hasattr(self, "_status_label"):
+                return
+            self._status_label.text_size = (root.width - dp(32), None)
+            self._status_label.font_size = min(dp(15), max(dp(11), root.width * 0.035))
+            self._status_label.texture_update()
+            self._status_label.height = max(dp(36), self._status_label.texture_size[1])
+
+        root.bind(width=_reflow_status)
+        Clock.schedule_once(lambda *_: _reflow_status(), 0)
         
         # Привязка свойств
         self.bind(progress=self._update_progress_ui)
@@ -203,11 +218,13 @@ class ModelDownloadScreen(BaseScreen):
             if self.is_downloading:
                 # Меняем кнопку "Скачать" на "Отмена"
                 self._download_btn.clear_widgets()
-                self._download_btn.add_widget(MDButtonText(text="Отмена"))
+                cancel_text = MDButtonText(text="Отмена", pos_hint={"center_x": 0.5, "center_y": 0.5})
+                self._download_btn.add_widget(cancel_text)
                 self._skip_btn.disabled = True
             else:
                 self._download_btn.clear_widgets()
-                self._download_btn.add_widget(MDButtonText(text="Скачать"))
+                download_text = MDButtonText(text="Скачать", pos_hint={"center_x": 0.5, "center_y": 0.5})
+                self._download_btn.add_widget(download_text)
                 self._skip_btn.disabled = False
     
     def _on_skip(self):
@@ -232,6 +249,9 @@ class ModelDownloadScreen(BaseScreen):
         self.status_text = "Скачивание модели..."
         self.progress = 0
         self.downloaded_mb = 0
+        # Сбрасываем прогресс-бар на 0 (determinate mode, без анимации)
+        if hasattr(self, "_progress_bar"):
+            self._progress_bar.value = 0
         
         def progress_callback(downloaded: int, total: int):
             if self._cancel_flag:
@@ -251,14 +271,15 @@ class ModelDownloadScreen(BaseScreen):
                 # Импортируем здесь, чтобы избежать circular import
                 from utils.model_bootstrap import download_model
                 
-                # Имя модели - константа
-                model_name = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
-                download_model(model_name, progress_callback)
+                download_model(OFFLINE_MODEL_NAME, progress_callback)
                 
                 def on_success(dt):
                     self.is_downloading = False
                     self.status_text = "Модель успешно загружена!"
                     self.progress = 100
+                    if hasattr(self, "_progress_bar"):
+                        self._progress_bar.value = 1.0  # 100%
+                    self._reset_quiz_progress_once()
                     # Автоматически переходим на главный экран через 1.5 сек
                     Clock.schedule_once(lambda dt: self._finish_and_go_home(), 1.5)
                 
@@ -291,3 +312,26 @@ class ModelDownloadScreen(BaseScreen):
         if hasattr(app, "_prepare_offline_model_async"):
             app._prepare_offline_model_async()
         app.open_home()
+
+    def _reset_quiz_progress_once(self) -> None:
+        """Сбрасывает попытки тестов только при первом скачивании модели."""
+        app = self.get_app()
+        marker = None
+        try:
+            marker = Path(app.user_data_dir) / "mm_model_downloaded.flag"
+        except Exception:
+            marker = None
+
+        if marker and marker.exists():
+            return
+
+        repo = getattr(app, "course_repo", None)
+        if not repo:
+            return
+
+        try:
+            repo.reset_all_quiz_progress()
+            if marker:
+                marker.write_text("ok", encoding="utf-8")
+        except Exception as e:
+            Logger.exception(f"[ModelDownload] reset quiz progress failed: {e}")

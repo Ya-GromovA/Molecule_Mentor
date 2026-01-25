@@ -21,6 +21,7 @@ class MoleculeGroup:
     center: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rot_x: float = 0.0
     rot_y: float = 0.0
+    scale: float = 1.0
 
 
 _ELEMENT_COLOR = {
@@ -67,6 +68,10 @@ class Visualizer3D(Widget):
         self._scale = 0.7  # Меньший начальный масштаб
         self._center = (0.0, 0.0, 0.0)
 
+        # Панорамирование сцены
+        self._pan_x = 0.0
+        self._pan_y = 0.0
+
         # Группы молекул для независимого вращения
         self._groups: list[MoleculeGroup] = []
         self._active_group_idx: Optional[int] = None  # Какую группу вращаем/перетаскиваем
@@ -74,6 +79,9 @@ class Visualizer3D(Widget):
         self._touches: dict[int, tuple[float, float]] = {}
         self._pinch_initial_dist: Optional[float] = None
         self._pinch_initial_scale: float = 1.0
+        self._pinch_initial_mid: Optional[tuple[float, float]] = None
+        self._pinch_group_idx: Optional[int] = None
+        self._pinch_initial_group_scale: float = 1.0
 
         self._last_proj: list[tuple[float, float, float]] = []  # (x,y,depth)
         
@@ -112,13 +120,16 @@ class Visualizer3D(Widget):
         self.bonds = bonds or []
         self.highlight_break = set(tuple(sorted(x)) for x in (highlight_break or []))
         self.highlight_form = set(tuple(sorted(x)) for x in (highlight_form or []))
+
+        self._pan_x = 0.0
+        self._pan_y = 0.0
         
         # Настраиваем группы молекул
         self._groups = []
         if groups:
             for atom_indices in groups:
                 if atom_indices:
-                    group = MoleculeGroup(atom_indices=atom_indices)
+                    group = MoleculeGroup(atom_indices=atom_indices, scale=1.0)
                     self._recenter_group(group)
                     self._groups.append(group)
         
@@ -182,6 +193,17 @@ class Visualizer3D(Widget):
             pts = list(self._touches.values())
             self._pinch_initial_dist = math.dist(pts[0], pts[1])
             self._pinch_initial_scale = self._scale
+            self._pinch_initial_mid = (
+                (pts[0][0] + pts[1][0]) / 2.0,
+                (pts[0][1] + pts[1][1]) / 2.0,
+            )
+            self._pinch_group_idx = None
+            if self._groups:
+                g0 = self._find_group_at(pts[0])
+                g1 = self._find_group_at(pts[1])
+                if g0 is not None and g0 == g1:
+                    self._pinch_group_idx = g0
+                    self._pinch_initial_group_scale = self._groups[g0].scale
 
         return True
     
@@ -240,8 +262,24 @@ class Visualizer3D(Widget):
             d = math.dist(pts[0], pts[1])
             if d > 1e-3:
                 factor = d / self._pinch_initial_dist
-                self._scale = max(0.15, min(4.0, self._pinch_initial_scale * factor))
-                self.redraw()
+                if self._pinch_group_idx is not None and self._groups:
+                    group = self._groups[self._pinch_group_idx]
+                    group.scale = max(0.4, min(3.0, self._pinch_initial_group_scale * factor))
+                else:
+                    self._scale = max(0.15, min(4.0, self._pinch_initial_scale * factor))
+
+            if self._pinch_initial_mid:
+                mid = ((pts[0][0] + pts[1][0]) / 2.0, (pts[0][1] + pts[1][1]) / 2.0)
+                dx = mid[0] - self._pinch_initial_mid[0]
+                dy = mid[1] - self._pinch_initial_mid[1]
+                self._pan_x += dx
+                self._pan_y += dy
+                # вертикальным движением слегка наклоняем все молекулы по X
+                self._rot_x -= dy * 0.003
+                self._rot_y += dx * 0.003
+                self._pinch_initial_mid = mid
+
+            self.redraw()
 
         return True
 
@@ -268,6 +306,8 @@ class Visualizer3D(Widget):
         
         if len(self._touches) < 2:
             self._pinch_initial_dist = None
+            self._pinch_initial_mid = None
+            self._pinch_group_idx = None
         return super().on_touch_up(touch)
 
     def _handle_tap(self, pos) -> None:
@@ -345,6 +385,12 @@ class Visualizer3D(Widget):
             # Вращение относительно центра группы
             gcx, gcy, gcz = group.center
             lx, ly, lz = x - gcx, y - gcy, z - gcz
+
+            # Масштаб группы (отдельной молекулы)
+            scale = getattr(group, "scale", 1.0)
+            lx *= scale
+            ly *= scale
+            lz *= scale
             
             # Применяем вращение группы
             cosx = math.cos(group.rot_x)
@@ -368,27 +414,26 @@ class Visualizer3D(Widget):
         y -= cy
         z -= cz
 
-        # Глобальное вращение (если нет групп или для общего вида)
-        if not self._groups:
-            cosx = math.cos(self._rot_x)
-            sinx = math.sin(self._rot_x)
-            y2 = y * cosx - z * sinx
-            z2 = y * sinx + z * cosx
-            y, z = y2, z2
+        # Глобальное вращение (всегда доступно)
+        cosx = math.cos(self._rot_x)
+        sinx = math.sin(self._rot_x)
+        y2 = y * cosx - z * sinx
+        z2 = y * sinx + z * cosx
+        y, z = y2, z2
 
-            cosy = math.cos(self._rot_y)
-            siny = math.sin(self._rot_y)
-            x2 = x * cosy + z * siny
-            z2 = -x * siny + z * cosy
-            x, z = x2, z2
+        cosy = math.cos(self._rot_y)
+        siny = math.sin(self._rot_y)
+        x2 = x * cosy + z * siny
+        z2 = -x * siny + z * cosy
+        x, z = x2, z2
 
         # scale and fit to widget
         norm = 1.8
         sx = (x / norm) * (min(self.width, self.height) * 0.38) * self._scale
         sy = (y / norm) * (min(self.width, self.height) * 0.38) * self._scale
 
-        px = self.center_x + sx
-        py = self.center_y + sy
+        px = self.center_x + sx + self._pan_x
+        py = self.center_y + sy + self._pan_y
         depth = z
         return px, py, depth
 

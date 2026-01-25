@@ -124,8 +124,10 @@ class ReactionsScreen(BaseScreen):
         text1 = getattr(app, "mm_text", (1, 1, 1, 1))
         text2 = getattr(app, "mm_text2", (0.75, 0.78, 0.85, 1))
 
-        title_fs = dp(20)
-        sub_fs = dp(14)
+        title_fs_base = dp(18)
+        title_fs_min = dp(12)
+        sub_fs = dp(13)
+        card_height_fixed = dp(64)
 
         for it in items:
             rid = str(it.get("reaction_id") or "")
@@ -142,25 +144,29 @@ class ReactionsScreen(BaseScreen):
                 border_rgba=border,
                 pressed_delta=pressed_delta,
                 elevation=elevation,
-                radius=[18, 18, 18, 18],
-                padding=(dp(16), dp(12), dp(16), dp(12)),
+                radius=[14, 14, 14, 14],
+                padding=(dp(12), dp(8), dp(12), dp(8)),
                 size_hint_x=1,
                 size_hint_y=None,
-                height=dp(84),
+                height=card_height_fixed,
             )
 
-            box = BoxLayout(orientation="vertical", spacing=dp(4))
+            box = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
+            box.height = card_height_fixed - dp(16)
 
             lbl_title = MDLabel(
                 text=name,
                 bold=True,
                 theme_text_color="Custom",
                 text_color=text1,
-                font_size=title_fs,
+                font_size=title_fs_base,
                 halign="left",
                 valign="middle",
+                shorten=True,
+                shorten_from="right",
+                max_lines=1,
                 size_hint_y=None,
-                height=dp(28),
+                height=dp(24),
             )
             lbl_eq = MDLabel(
                 text=eq,
@@ -169,11 +175,32 @@ class ReactionsScreen(BaseScreen):
                 font_size=sub_fs,
                 halign="left",
                 valign="middle",
+                shorten=True,
+                shorten_from="right",
+                max_lines=1,
                 size_hint_y=None,
-                height=dp(20),
+                height=dp(18),
             )
 
             box.add_widget(lbl_title)
             box.add_widget(lbl_eq)
             card.add_widget(box)
             cards.add_widget(card)
+
+            def _adjust_title_font(lbl=lbl_title, base_fs=title_fs_base, min_fs=title_fs_min, card_ref=card):
+                content_w = max(dp(100), card_ref.width - dp(24))
+                lbl.text_size = (content_w, None)
+                lbl.font_size = base_fs
+                lbl.texture_update()
+                # Уменьшаем шрифт если текст не помещается
+                while lbl.texture_size[0] > content_w and lbl.font_size > min_fs:
+                    lbl.font_size = lbl.font_size - dp(1)
+                    lbl.texture_update()
+
+            def _reflow_card(card_ref=card, lbl_title_ref=lbl_title, lbl_eq_ref=lbl_eq, adjust_fn=_adjust_title_font, *_):
+                content_w = max(dp(100), card_ref.width - dp(24))
+                lbl_eq_ref.text_size = (content_w, None)
+                adjust_fn()
+
+            card.bind(size=_reflow_card)
+            Clock.schedule_once(lambda dt, fn=_reflow_card: fn(), 0)

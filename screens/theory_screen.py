@@ -20,6 +20,21 @@ def sanitize_text(text: str) -> str:
     """Убирает нечитаемые символы и Markdown из текста."""
     if not text:
         return ""
+
+    # Убираем LaTeX-нотацию (частично)
+    text = text.replace("\\[", "")
+    text = text.replace("\\]", "")
+    text = text.replace("\\(", "")
+    text = text.replace("\\)", "")
+    text = text.replace("\\rightarrow", "->")
+    text = text.replace("\\leftarrow", "<-")
+    text = text.replace("\\leftrightarrow", "<->")
+    text = text.replace("\\rightleftharpoons", "<->")
+    text = text.replace("\\leftrightharpoons", "<->")
+    text = re.sub(r"\\text\{([^}]*)\}", r"\1", text)
+    text = re.sub(r"\^\{([^}]*)\}", r"^\1", text)
+    text = re.sub(r"_\{([^}]*)\}", r"_\1", text)
+    text = text.replace("\\", "")
     
     # Заменяем греческие буквы
     text = text.replace("σ", "сигма")
