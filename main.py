@@ -8,6 +8,23 @@ def _is_android() -> bool:
     """Проверка - запущено на телефоне или на компе"""
     return 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
 
+
+def _setup_android_llama() -> None:
+    if not _is_android():
+        return
+
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    third_party_dir = os.path.join(project_dir, "third_party")
+    if third_party_dir not in sys.path:
+        sys.path.insert(0, third_party_dir)
+
+    lib_path = os.path.join(project_dir, "assets", "llama", "libllama.so")
+    if os.path.exists(lib_path):
+        os.environ.setdefault("LLAMA_CPP_LIB", lib_path)
+
+
+_setup_android_llama()
+
 # Настройки для Android - без них приложение вылетает
 if _is_android():
     # Выключаем аппаратное ускорение - с ним на некоторых телефонах краш

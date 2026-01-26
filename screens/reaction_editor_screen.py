@@ -561,14 +561,20 @@ class ReactionEditorScreen(Screen):
             return
         
         hor_growth = "right" if caller.center_x < Window.width * 0.5 else "left"
+        available_up = Window.height - caller.top - dp(8)
+        max_height = max(dp(120), available_up)
+        if available_up > 0:
+            max_height = min(max_height, available_up)
+        else:
+            max_height = dp(120)
         self._substance_menu = MDDropdownMenu(
             caller=caller,
             items=menu_items,
             width=min(dp(260), Window.width - dp(32)),
-            position="bottom",
+            position="top",
             hor_growth=hor_growth,
             ver_growth="up",
-            max_height=max(dp(120), Window.height - dp(220)),
+            max_height=max_height,
         )
         self._substance_menu.open()
 
