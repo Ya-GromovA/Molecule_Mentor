@@ -100,6 +100,24 @@ class ChatCompletionLogprobs(TypedDict):
     refusal: Optional[List[ChatCompletionLogprobToken]]
 
 
+class ChatCompletionTopLogprobToken(TypedDict):
+    token: str
+    logprob: float
+    bytes: Optional[List[int]]
+
+
+class ChatCompletionLogprobToken(ChatCompletionTopLogprobToken):
+    token: str
+    logprob: float
+    bytes: Optional[List[int]]
+    top_logprobs: List[ChatCompletionTopLogprobToken]
+
+
+class ChatCompletionLogprobs(TypedDict):
+    content: Optional[List[ChatCompletionLogprobToken]]
+    refusal: Optional[List[ChatCompletionLogprobToken]]
+
+
 class ChatCompletionResponseChoice(TypedDict):
     index: int
     message: "ChatCompletionResponseMessage"

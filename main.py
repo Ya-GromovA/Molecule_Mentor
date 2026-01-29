@@ -461,6 +461,12 @@ OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 MOLECULES_DIR = PROJECT_DIR / "assets" / "molecules"
 REACTIONS_DIR = PROJECT_DIR / "assets" / "reactions"
 
+# Проверяем критические файлы сразу
+_early_log(f"KV_PATH: {KV_PATH}, exists: {KV_PATH.exists()}")
+_early_log(f"COURSES_DB: {COURSES_DB}, exists: {COURSES_DB.exists()}")
+_early_log(f"MOLECULES_DIR: {MOLECULES_DIR}, exists: {MOLECULES_DIR.exists()}")
+_early_log(f"REACTIONS_DIR: {REACTIONS_DIR}, exists: {REACTIONS_DIR.exists()}")
+
 
 _early_log(f"KV_PATH: {KV_PATH}, exists: {KV_PATH.exists()}")
 _early_log(f"COURSES_DB: {COURSES_DB}, exists: {COURSES_DB.exists()}")
@@ -542,6 +548,15 @@ def ensure_mm_tables(db_path: str) -> None:
             updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
+        """)
+        
+        # Создаем запись-заглушку для викторин по категориям (quiz_id=0)
+        # Это нужно для foreign key constraint в mm_quiz_attempts
+        # Используем course_id из существующего курса (или 1 по умолчанию)
+        cur.execute("""
+        INSERT OR IGNORE INTO mm_quizzes (id, course_id, title) 
+        SELECT 0, COALESCE((SELECT id FROM courses LIMIT 1), 1), 'Викторины по категориям'
+        WHERE NOT EXISTS (SELECT 1 FROM mm_quizzes WHERE id = 0)
         """)
 
 

@@ -26,6 +26,7 @@ logger = logging.getLogger("llama-cpp-python")
 _last_log_level = GGML_LOG_LEVEL_TO_LOGGING_LEVEL[0]
 
 
+# typedef void (*ggml_log_callback)(enum ggml_log_level level, const char * text, void * user_data);
 @llama_cpp.llama_log_callback
 def llama_log_callback(
     level: int,

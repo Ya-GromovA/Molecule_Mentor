@@ -161,6 +161,13 @@ llama_model_p_ctypes = ctypes.c_void_p
 llama_context_p = NewType("llama_context_p", int)
 llama_context_p_ctypes = ctypes.c_void_p
 
+# typedef struct llama_memory_i * llama_memory_t;
+llama_memory_t = NewType("llama_memory_t", int)
+llama_memory_t_ctypes = ctypes.c_void_p
+
+# struct llama_kv_cache; (DEPRECATED)
+llama_kv_cache_p = NewType("llama_kv_cache_p", int)
+llama_kv_cache_p_ctypes = ctypes.c_void_p
 
 llama_memory_t = NewType("llama_memory_t", int)
 llama_memory_t_ctypes = ctypes.c_void_p
@@ -1262,6 +1269,21 @@ def llama_init_from_model(
 
 
 
+@ctypes_function(
+    "llama_init_from_model",
+    [llama_model_p_ctypes, llama_context_params],
+    llama_context_p_ctypes,
+)
+def llama_init_from_model(
+    model: llama_model_p, params: llama_context_params, /
+) -> Optional[llama_context_p]:
+    ...
+
+
+# DEPRECATED(LLAMA_API struct llama_context * llama_new_context_with_model(
+#                  struct llama_model * model,
+#         struct llama_context_params   params),
+#         "use llama_init_from_model instead");
 @ctypes_function(
     "llama_new_context_with_model",
     [llama_model_p_ctypes, llama_context_params],
