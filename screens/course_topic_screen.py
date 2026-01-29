@@ -159,14 +159,7 @@ class CourseTopicScreen(BaseScreen):
             col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
             col.bind(minimum_height=col.setter("height"))
 
-            # кнопка для запуска теста
-            quiz_btn = self._make_clickable_item(
-                title="Пройти тест по курсу",
-                subtitle=f"Проверь свои знания ({len(topics)} тем)",
-                on_click=lambda cid=course_id: app.open_quiz_for_course(cid),
-            )
-            col.add_widget(quiz_btn)
-
+            # Список тем раздела (без кнопки теста - тесты в викторинах)
             for t in topics:
                 item = self._make_clickable_item(
                     title=str(t.title),

@@ -304,6 +304,15 @@ class ModelDownloadScreen(BaseScreen):
         
         self._download_thread = threading.Thread(target=download_work, daemon=True)
         self._download_thread.start()
+
+    def start_download(self) -> None:
+        """Публичный запуск скачивания с внешнего экрана."""
+        if self.is_downloading:
+            return
+        if not self._content_built:
+            self._build_content()
+            self._content_built = True
+        Clock.schedule_once(lambda *_: self._start_download(), 0)
     
     def _cancel_download(self):
         """Отмена скачивания."""

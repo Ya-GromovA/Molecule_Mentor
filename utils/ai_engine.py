@@ -5,8 +5,10 @@ import json
 import os
 import re
 import socket
+import sys
 import threading
 import time
+import ctypes
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any
 from urllib.parse import quote
@@ -106,24 +108,327 @@ class AIEngine:
     # разрешаем органику типа R-COOH, R'-OH
     _RE_ORGANIC_TOKEN = re.compile(r"^(?:R|R'|R')(?:[A-Za-z0-9''+\-()]{0,32})$")
 
-    # заменяем английские слова на русские
+    # заменяем английские слова на русские (расширенный словарь для оффлайн модели)
     FORCED_RU_TERMS = {
+        # Общие слова
         "and/or": "и/или",
         "and": "и",
         "or": "или",
+        "the": "",
+        "a": "",
+        "an": "",
+        "is": "это",
+        "are": "являются",
+        "it": "это",
+        "its": "его",
+        "this": "это",
+        "that": "это",
+        "which": "который",
+        "where": "где",
+        "when": "когда",
+        "how": "как",
+        "what": "что",
+        "many": "многих",
+        "other": "другой",
+        "others": "другие",
+        "some": "некоторые",
+        "such": "такие",
+        "as": "как",
+        "with": "с",
+        "without": "без",
+        "for": "для",
+        "from": "из",
+        "in": "в",
+        "on": "на",
+        "to": "к",
+        "of": "",
+        "by": "",
+        "also": "также",
+        "very": "очень",
+        "more": "более",
+        "most": "наиболее",
+        "less": "менее",
+        "much": "много",
+        "can": "может",
+        "may": "может",
+        "will": "будет",
+        "would": "будет",
+        "could": "мог бы",
+        "should": "должен",
+        "must": "должен",
+        "have": "имеют",
+        "has": "имеет",
+        "had": "имел",
+        "do": "",
+        "does": "",
+        "did": "",
+        "not": "не",
+        "but": "но",
+        "if": "если",
+        "then": "тогда",
+        "so": "так",
+        "because": "потому что",
+        "however": "однако",
+        "therefore": "поэтому",
+        "example": "пример",
+        "examples": "примеры",
+        "important": "важный",
+        "main": "главный",
+        "basic": "основной",
+        "different": "различный",
+        "various": "различные",
+        "common": "общий",
+        "specific": "конкретный",
+        "general": "общий",
+        "special": "особый",
+        "new": "новый",
+        "old": "старый",
+        "large": "большой",
+        "small": "маленький",
+        "high": "высокий",
+        "low": "низкий",
+        "first": "первый",
+        "second": "второй",
+        "third": "третий",
+        "last": "последний",
+        "next": "следующий",
+        "only": "только",
+        "same": "тот же",
+        "each": "каждый",
+        "every": "каждый",
+        "all": "все",
+        "both": "оба",
+        "any": "любой",
+        "no": "нет",
+        "yes": "да",
+        
+        # Химические термины
         "dissolveable": "растворимый",
         "dissolvable": "растворимый",
-        "miscible": "смешивающихся",
-        "immiscible": "несмешивающихся",
+        "miscible": "смешивающийся",
+        "immiscible": "несмешивающийся",
         "texture": "структура",
         "solvent": "растворитель",
         "compound": "соединение",
+        "compounds": "соединения",
         "substance": "вещество",
+        "substances": "вещества",
         "properties": "свойства",
+        "property": "свойство",
         "mixture": "смесь",
+        "mixtures": "смеси",
         "solution": "раствор",
+        "solutions": "растворы",
         "aqueous": "водный",
         "ionic": "ионный",
+        "covalent": "ковалентный",
+        "molecular": "молекулярный",
+        "atom": "атом",
+        "atoms": "атомы",
+        "molecule": "молекула",
+        "molecules": "молекулы",
+        "element": "элемент",
+        "elements": "элементы",
+        "reaction": "реакция",
+        "reactions": "реакции",
+        "chemical": "химический",
+        "organic": "органический",
+        "inorganic": "неорганический",
+        "acid": "кислота",
+        "acids": "кислоты",
+        "base": "основание",
+        "bases": "основания",
+        "salt": "соль",
+        "salts": "соли",
+        "water": "вода",
+        "oxygen": "кислород",
+        "hydrogen": "водород",
+        "carbon": "углерод",
+        "nitrogen": "азот",
+        "energy": "энергия",
+        "temperature": "температура",
+        "pressure": "давление",
+        "concentration": "концентрация",
+        "mass": "масса",
+        "volume": "объём",
+        "density": "плотность",
+        "structure": "структура",
+        "formula": "формула",
+        "formulas": "формулы",
+        "bond": "связь",
+        "bonds": "связи",
+        "electron": "электрон",
+        "electrons": "электроны",
+        "proton": "протон",
+        "protons": "протоны",
+        "neutron": "нейтрон",
+        "neutrons": "нейтроны",
+        "nucleus": "ядро",
+        "ion": "ион",
+        "ions": "ионы",
+        "positive": "положительный",
+        "negative": "отрицательный",
+        "neutral": "нейтральный",
+        "polar": "полярный",
+        "nonpolar": "неполярный",
+        
+        # Биология/общее
+        "living": "живых",
+        "organisms": "организмов",
+        "organism": "организм",
+        "biological": "биологических",
+        "processes": "процессов",
+        "process": "процесс",
+        "cell": "клетка",
+        "cells": "клетки",
+        "life": "жизнь",
+        "nature": "природа",
+        "natural": "природный",
+        "environment": "окружающая среда",
+        "body": "тело",
+        "human": "человеческий",
+        "plant": "растение",
+        "plants": "растения",
+        "animal": "животное",
+        "animals": "животные",
+        "food": "пища",
+        "health": "здоровье",
+        
+        # Применение
+        "used": "используется",
+        "use": "использование",
+        "uses": "использует",
+        "using": "используя",
+        "application": "применение",
+        "applications": "применения",
+        "industry": "промышленность",
+        "industrial": "промышленный",
+        "production": "производство",
+        "medicine": "медицина",
+        "medical": "медицинский",
+        "technology": "технология",
+        "material": "материал",
+        "materials": "материалы",
+        "irrigation": "орошения",
+        "foods": "продуктов",
+        "quickly": "быстро",
+        "bloodstream": "кровоток",
+        "transported": "транспортируется",
+        "converted": "преобразуется",
+        "enters": "попадает",
+        "think": "думать",
+        "feel": "чувствовать",
+        "move": "двигаться",
+        "moves": "движется",
+        "source": "источник",
+        "sources": "источники",
+        "level": "уровень",
+        "levels": "уровни",
+        "treatment": "лечение",
+        "disease": "болезнь",
+        "diseases": "болезни",
+        "sugar": "сахар",
+        "sugars": "сахара",
+        "simple": "простой",
+        "complex": "сложный",
+        "type": "тип",
+        "types": "типы",
+        "form": "форма",
+        "forms": "формы",
+        "group": "группа",
+        "groups": "группы",
+        "class": "класс",
+        "name": "название",
+        "names": "названия",
+        "called": "называется",
+        "known": "известный",
+        "found": "найден",
+        "contains": "содержит",
+        "contain": "содержат",
+        "consists": "состоит",
+        "include": "включают",
+        "includes": "включает",
+        "including": "включая",
+        "exist": "существует",
+        "exists": "существуют",
+        "formed": "образуется",
+        "produced": "производится",
+        "occurs": "происходит",
+        "takes": "занимает",
+        "place": "место",
+        "part": "часть",
+        "parts": "части",
+        "role": "роль",
+        "plays": "играет",
+        "way": "способ",
+        "ways": "способы",
+        "method": "метод",
+        "methods": "методы",
+        "result": "результат",
+        "results": "результаты",
+        "effect": "эффект",
+        "effects": "эффекты",
+        "cause": "причина",
+        "causes": "причины",
+        "reason": "причина",
+        "reasons": "причины",
+        "factor": "фактор",
+        "factors": "факторы",
+        "condition": "условие",
+        "conditions": "условия",
+        "state": "состояние",
+        "states": "состояния",
+        "change": "изменение",
+        "changes": "изменения",
+        "increase": "увеличение",
+        "decrease": "уменьшение",
+        "higher": "выше",
+        "lower": "ниже",
+        "between": "между",
+        "through": "через",
+        "into": "в",
+        "out": "из",
+        "up": "вверх",
+        "down": "вниз",
+        "over": "над",
+        "under": "под",
+        "about": "около",
+        "around": "около",
+        "during": "во время",
+        "after": "после",
+        "before": "до",
+        "while": "пока",
+        "until": "до тех пор пока",
+        "since": "с тех пор как",
+        "although": "хотя",
+        "though": "хотя",
+        "even": "даже",
+        "just": "просто",
+        "still": "всё ещё",
+        "already": "уже",
+        "always": "всегда",
+        "never": "никогда",
+        "often": "часто",
+        "sometimes": "иногда",
+        "usually": "обычно",
+        "normally": "обычно",
+        "especially": "особенно",
+        "mainly": "в основном",
+        "mostly": "в основном",
+        "generally": "обычно",
+        "typically": "типично",
+        "directly": "напрямую",
+        "completely": "полностью",
+        "easily": "легко",
+        "slowly": "медленно",
+        "rapidly": "быстро",
+        "immediately": "немедленно",
+        "finally": "наконец",
+        "together": "вместе",
+        "separately": "отдельно",
+        "properly": "правильно",
+        "exactly": "точно",
+        "approximately": "приблизительно",
     }
     
     # фиксы опечаток которые модель часто делает
@@ -169,8 +474,9 @@ class AIEngine:
         
         if is_offline:
             base += (
-                "\nТы работаешь в оффлайн-режиме. Дай максимально подробный ответ "
-                "по тем знаниям, которые у тебя есть. Не пиши «я в оффлайн-режиме».\n"
+                "\nВАЖНО: отвечай КРАТКО, 3-5 предложений максимум.\n"
+                "Используй ТОЛЬКО русские слова. Никаких английских слов!\n"
+                "Пиши простым языком для школьника.\n"
             )
         
         return base
@@ -247,7 +553,7 @@ class AIEngine:
         except Exception:
             return None
 
-    def _fetch_wikipedia_ru_summary(self, term: str, timeout_sec: float = 6.0) -> Tuple[str, str]:
+    def _fetch_wikipedia_ru_summary(self, term: str, timeout_sec: float = 3.0) -> Tuple[str, str]:
         # качаем краткое описание из википедии
         if not term:
             return "", ""
@@ -259,7 +565,7 @@ class AIEngine:
         extract = (data.get("extract") or "").strip()
         return title, extract
 
-    def _fetch_pubchem_basic(self, term: str, timeout_sec: float = 7.0) -> Dict[str, str]:
+    def _fetch_pubchem_basic(self, term: str, timeout_sec: float = 3.0) -> Dict[str, str]:
         # качаем формулу и IUPAC название из PubChem
         if not term:
             return {"formula": "", "iupac": ""}
@@ -418,6 +724,25 @@ class AIEngine:
             text = re.sub(rf"\b{re.escape(en)}\b", ru, text, flags=re.IGNORECASE)
         return text
     
+    def _translate_english_words(self, text: str) -> str:
+        """Заменяет английские слова на русские в ответе оффлайн модели."""
+        if not text:
+            return text
+        
+        # Применяем словарь замен
+        text = self._force_ru_terms(text)
+        
+        # Убираем двойные пробелы которые могли появиться
+        text = re.sub(r'\s{2,}', ' ', text)
+        
+        # Убираем пробелы перед знаками препинания
+        text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
+        
+        # Исправляем опечатки
+        text = self._fix_typos(text)
+        
+        return text.strip()
+    
     def _fix_typos(self, text: str) -> str:
         # исправляем опечатки типа "спиры"
         if not text:
@@ -545,7 +870,7 @@ class AIEngine:
         return True
 
     # -------- основной метод --------
-    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 45, verify: bool = True) -> str:
+    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 20, verify: bool = True) -> str:
         # главный метод для запроса к ИИ
         history = history or []
         text = (text or "").strip()
@@ -553,13 +878,15 @@ class AIEngine:
             return "Напиши вопрос 🙂"
 
         m = self.mode()
+        is_offline = m == "OFFLINE"
 
         # если вопрос похож на химический - подтягиваем факты
         retrieved_ctx = ""
         retrieved_sources: list[str] = []
         strict_sources = os.environ.get("MM_STRICT_SOURCES", "0").strip().lower() not in ("0", "false", "no")
 
-        if self._is_chem_query(text):
+        # В оффлайне не тянем источники из интернета
+        if not is_offline and self._is_chem_query(text):
             term = self._extract_term_ru(text)
             retrieved_ctx, retrieved_sources = self._build_retrieved_context_ru(term)
 
@@ -572,7 +899,6 @@ class AIEngine:
                 )
 
         # системный промпт живёт здесь, не в интерфейсе
-        is_offline = m == "OFFLINE"
         base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
         base_messages.extend(history[-20:])
 
@@ -594,6 +920,8 @@ class AIEngine:
         base_messages.append({"role": "user", "content": text})
 
         def do_call(messages: list[dict]) -> str:
+            nonlocal is_offline  # чтобы можно было обновить режим при fallback
+            
             if m == "ONLINE":
                 try:
                     return self._ask_online(messages, timeout_sec=timeout_sec)
@@ -605,6 +933,7 @@ class AIEngine:
                         self._internet_ok_cached = False
                         self._internet_fail_streak = 1
                     self._switch("OFFLINE")
+                    is_offline = True  # обновляем флаг чтобы пропустить rewrite/verify
                     return self._ask_offline(messages)
 
             if m == "OFFLINE":
@@ -614,6 +943,7 @@ class AIEngine:
                     return f"Оффлайн-модель временно недоступна: {str(e)[:100]}"
 
             # если режим N/A - пробуем оффлайн как последний шанс
+            is_offline = True
             try:
                 return self._ask_offline(messages)
             except Exception:
@@ -628,47 +958,52 @@ class AIEngine:
                 "Попробуй задать вопрос короче."
             )
 
-        # переписываем ответ на русском, если проскочила латиница
-        for attempt in range(3):
-            if self._is_answer_quality_good(answer) and not self._needs_russian_rewrite(answer):
-                break
-            
-            # если совсем плохо - отдаём фоллбэк
-            if attempt >= 2 and not self._is_answer_quality_good(answer):
-                answer = "К сожалению, я не смог дать корректный ответ на этот вопрос. Попробуйте переформулировать вопрос или задать другой."
-                break
-            
-            rewrite_messages = [
-                {"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)},
-                {
-                    "role": "user",
-                    "content": (
-                        "Перепиши ответ СТРОГО на русском языке.\n"
-                        "1) Убери ВСЕ английские слова, кроме химических формул.\n"
-                        "2) Не используй странные символы, напиши обычными буквами.\n"
-                        "3) Если ответ химически некорректный - напиши честное 'я не знаю'.\n"
-                        "4) Химические формулы: H2O, CO2, NaOH, CH3OH, C2H5OH.\n"
-                        "5) Сохрани смысл оригинального ответа.\n\n"
-                        f"ОРИГИНАЛ:\n{answer}"
-                    ),
-                },
-            ]
-            rewritten = (do_call(rewrite_messages) or "").strip()
-            if rewritten and rewritten != answer:
-                answer = rewritten
-            else:
-                break
+        # В оффлайн режиме пропускаем rewrite и verify чтобы отвечать быстрее
+        if not is_offline:
+            # переписываем ответ на русском, если проскочила латиница
+            for attempt in range(3):
+                if self._is_answer_quality_good(answer) and not self._needs_russian_rewrite(answer):
+                    break
+                
+                # если совсем плохо - отдаём фоллбэк
+                if attempt >= 2 and not self._is_answer_quality_good(answer):
+                    answer = "К сожалению, я не смог дать корректный ответ на этот вопрос. Попробуйте переформулировать вопрос или задать другой."
+                    break
+                
+                rewrite_messages = [
+                    {"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Перепиши ответ СТРОГО на русском языке.\n"
+                            "1) Убери ВСЕ английские слова, кроме химических формул.\n"
+                            "2) Не используй странные символы, напиши обычными буквами.\n"
+                            "3) Если ответ химически некорректный - напиши честное 'я не знаю'.\n"
+                            "4) Химические формулы: H2O, CO2, NaOH, CH3OH, C2H5OH.\n"
+                            "5) Сохрани смысл оригинального ответа.\n\n"
+                            f"ОРИГИНАЛ:\n{answer}"
+                        ),
+                    },
+                ]
+                rewritten = (do_call(rewrite_messages) or "").strip()
+                if rewritten and rewritten != answer:
+                    answer = rewritten
+                else:
+                    break
 
-        # проверка ответа ещё одной моделью (можно отключить)
-        verify_enabled = verify and os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
-        if verify_enabled and answer:
-            verify_messages = [
-                {"role": "system", "content": self._verifier_prompt_ru()},
-                {"role": "user", "content": answer},
-            ]
-            verified = (do_call(verify_messages) or "").strip()
-            if verified:
-                answer = verified
+            # проверка ответа ещё одной моделью (можно отключить)
+            verify_enabled = (
+                verify
+                and os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
+            )
+            if verify_enabled and answer:
+                verify_messages = [
+                    {"role": "system", "content": self._verifier_prompt_ru()},
+                    {"role": "user", "content": answer},
+                ]
+                verified = (do_call(verify_messages) or "").strip()
+                if verified:
+                    answer = verified
 
         # финальная чистка
         answer = self._force_ru_terms(answer)
@@ -697,19 +1032,136 @@ class AIEngine:
         self._hf_token = tok
         return tok
 
-    def _is_internet_ok(self, host: str = "router.huggingface.co", port: int = 443, timeout: float = 2.5) -> bool:
+    def _is_internet_ok(self, timeout: float = 3.0) -> bool:
+        """Проверяет доступность интернета реальным HTTP запросом, не только socket."""
+        # Сначала быстрая проверка socket
         try:
-            with socket.create_connection((host, port), timeout=timeout):
-                return True
+            with socket.create_connection(("router.huggingface.co", 443), timeout=1.5):
+                pass
         except OSError:
             return False
+        
+        # Затем реальный HTTP HEAD запрос чтобы убедиться что трафик проходит
+        try:
+            r = self._http.head(
+                "https://huggingface.co/api/whoami-v2",
+                timeout=timeout,
+                allow_redirects=False,
+            )
+            # Любой ответ (даже 401) означает что интернет работает
+            return r.status_code < 500
+        except Exception:
+            return False
+
+    def _find_llama_lib_dir(self) -> str:
+        """Ищет директорию с библиотекой libllama.so"""
+        android_private = os.environ.get("ANDROID_PRIVATE", "")
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(project_dir, os.pardir))
+        
+        potential_paths = []
+        
+        if android_private:
+            # Шаг 1: Пробуем получить путь через jnius (nativeLibraryDir)
+            try:
+                from jnius import autoclass
+                PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                activity = PythonActivity.mActivity
+                if activity:
+                    app_info = activity.getApplicationInfo()
+                    native_lib_dir = app_info.nativeLibraryDir
+                    if native_lib_dir:
+                        potential_paths.append(native_lib_dir)
+            except Exception:
+                pass
+            
+            # Шаг 2: extracted libs из files/native_libs
+            files_dir = os.path.dirname(android_private)
+            potential_paths.append(os.path.join(files_dir, "native_libs"))
+            
+            # Шаг 3: Fallback paths
+            data_dir = os.path.dirname(files_dir)
+            potential_paths.extend([
+                os.path.join(data_dir, "lib"),
+                os.path.join(data_dir, "lib", "arm64"),
+            ])
+        else:
+            # Desktop: используем assets/llama
+            potential_paths.append(os.path.join(project_root, "assets", "llama"))
+        
+        # Также проверяем LD_LIBRARY_PATH
+        ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+        if ld_path:
+            potential_paths.extend(ld_path.split(":"))
+        
+        # Ищем libllama.so
+        for path in potential_paths:
+            if not path or not os.path.isdir(path):
+                continue
+            lib_path = os.path.join(path, "libllama.so")
+            if os.path.exists(lib_path):
+                return path
+        
+        return ""
+
+    def _ensure_android_llama_paths(self) -> None:
+        if "ANDROID_ARGUMENT" not in os.environ and "ANDROID_PRIVATE" not in os.environ:
+            return
+
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(project_dir, os.pardir))
+        third_party_dir = os.path.join(project_root, "third_party")
+        if third_party_dir not in sys.path:
+            sys.path.insert(0, third_party_dir)
+
+        llama_dir = self._find_llama_lib_dir()
+        
+        if not llama_dir:
+            return
+        
+        lib_path = os.path.join(llama_dir, "libllama.so")
+        if os.path.exists(lib_path):
+            # llama_cpp читает LLAMA_CPP_LIB_PATH (директория)
+            os.environ["LLAMA_CPP_LIB_PATH"] = llama_dir
+            os.environ["LLAMA_CPP_LIB"] = lib_path
+            existing = os.environ.get("LD_LIBRARY_PATH", "")
+            if llama_dir not in existing.split(":" if existing else ""):
+                os.environ["LD_LIBRARY_PATH"] = (llama_dir + ":" + existing).strip(":")
+
+            for dep in ("libomp.so", "libggml-base.so", "libggml-cpu.so", "libggml.so"):
+                dep_path = os.path.join(llama_dir, dep)
+                if os.path.exists(dep_path):
+                    try:
+                        ctypes.CDLL(dep_path, mode=ctypes.RTLD_GLOBAL)
+                    except Exception:
+                        pass
 
     def _try_import_llama(self) -> bool:
+        # Очищаем кеш импорта llama_cpp чтобы переменные окружения применились
+        for mod_name in list(sys.modules.keys()):
+            if "llama_cpp" in mod_name:
+                del sys.modules[mod_name]
+        
         try:
             import llama_cpp  # noqa: F401
             return True
-        except Exception:
-            return False
+        except Exception as e1:
+            # Сохраняем первую ошибку для диагностики
+            first_err = str(e1)
+            # попытка восстановить пути на Android
+            try:
+                self._ensure_android_llama_paths()
+                # Очищаем кеш снова после настройки путей
+                for mod_name in list(sys.modules.keys()):
+                    if "llama_cpp" in mod_name:
+                        del sys.modules[mod_name]
+                import llama_cpp  # noqa: F401
+                return True
+            except Exception as e2:
+                # Сохраняем финальную ошибку
+                with self._lock:
+                    self._llama_err = f"1st: {first_err[:100]}; 2nd: {str(e2)[:100]}"
+                return False
 
     def _ensure_llama(self):
         with self._lock:
@@ -719,10 +1171,13 @@ class AIEngine:
         try:
             from llama_cpp import Llama  # type: ignore
 
-            default_threads = max(4, (os.cpu_count() or 4))
+            # Используем меньше потоков на мобильных устройствах для стабильности
+            cpu_count = os.cpu_count() or 4
+            default_threads = min(4, cpu_count)  # не более 4 потоков
+            
             llm = Llama(
                 model_path=self.offline_model_path,
-                n_ctx=int(os.environ.get("LLAMA_N_CTX", "2048")),
+                n_ctx=int(os.environ.get("LLAMA_N_CTX", "1024")),  # уменьшено с 2048
                 n_threads=int(os.environ.get("LLAMA_THREADS", str(default_threads))),
                 n_gpu_layers=int(os.environ.get("LLAMA_GPU_LAYERS", "0")),
                 verbose=False,
@@ -750,11 +1205,14 @@ class AIEngine:
         try:
             res = llm.create_chat_completion(
                 messages=messages,
-                temperature=0.2,
-                top_p=0.95,
-                max_tokens=768,
+                temperature=0.3,  # чуть выше для более естественного русского
+                top_p=0.9,
+                max_tokens=400,  # уменьшено с 768 для скорости
             )
-            return (res["choices"][0]["message"]["content"] or "").strip()
+            answer = (res["choices"][0]["message"]["content"] or "").strip()
+            # Постобработка: заменяем английские слова на русские
+            answer = self._translate_english_words(answer)
+            return answer
         except Exception as e:
             return f"Ошибка генерации ответа оффлайн-модели: {str(e)[:100]}"
 

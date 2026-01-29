@@ -535,8 +535,8 @@ class ReactionEditorScreen(Screen):
             if data["category"] == category:
                 menu_items.append({
                     "text": f"{data['name']} ({key})",
-                    "font_size": sp(12),
-                    "height": dp(34),
+                    "font_size": sp(11),
+                    "height": dp(32),
                     "on_release": lambda k=key: self._add_substance(k),
                 })
         
@@ -559,21 +559,28 @@ class ReactionEditorScreen(Screen):
         
         if not caller:
             return
+
+        # Фиксированная ширина меню — компактнее, одинаковая для всех категорий
+        menu_width = dp(180)
+
+        # Все меню открываются ВВЕРХ от кнопки
+        # position="bottom" + ver_growth="up" = меню появляется над кнопкой
+        ver_growth = "up"
+        position = "bottom"
+        hor_growth = "right"
         
-        hor_growth = "right" if caller.center_x < Window.width * 0.5 else "left"
-        available_up = Window.height - caller.top - dp(8)
-        max_height = max(dp(120), available_up)
-        if available_up > 0:
-            max_height = min(max_height, available_up)
-        else:
-            max_height = dp(120)
+        # Высота меню ограничена, чтобы помещалось на маленьких экранах
+        # Считаем доступное пространство от низа кнопки до верха экрана минус отступы
+        available_height = Window.height - caller.y - dp(48)
+        max_height = min(dp(200), max(dp(100), available_height))
+
         self._substance_menu = MDDropdownMenu(
             caller=caller,
             items=menu_items,
-            width=min(dp(260), Window.width - dp(32)),
-            position="top",
+            width=menu_width,
+            position=position,
             hor_growth=hor_growth,
-            ver_growth="up",
+            ver_growth=ver_growth,
             max_height=max_height,
         )
         self._substance_menu.open()

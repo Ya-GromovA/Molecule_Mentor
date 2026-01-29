@@ -11,6 +11,7 @@ from kivy.logger import Logger
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import Screen
+from kivy.uix.widget import Widget
 
 from kivymd.uix.label import MDLabel
 
@@ -122,6 +123,7 @@ class MoleculeEditorScreen(Screen):
         self._message_label: Optional[MDLabel] = None
         self._temp_label: Optional[MDLabel] = None
         self._selected_reagent: Optional[str] = None
+        self._reagent_menu_anchor: Optional[Widget] = None
         
         # режим создания связей (если False - удаляем)
         self._bond_mode: bool = False
@@ -185,29 +187,13 @@ class MoleculeEditorScreen(Screen):
 
         host.clear_widgets()
 
-        # контейнер для 3D-вьювера
-        card = BoxLayout(
-            orientation="vertical",
-            padding=[dp(10), dp(10), dp(10), dp(10)],
-            size_hint=(1, 1),
-        )
-        bg_color = getattr(self.app, "mm_surface2", (0.10, 0.11, 0.14, 1))
-        with card.canvas.before:
-            Color(*bg_color)
-            card._bg_rect = RoundedRectangle(pos=card.pos, size=card.size, radius=[18, 18, 18, 18])
-        card.bind(
-            pos=lambda *_: setattr(card._bg_rect, 'pos', card.pos),
-            size=lambda *_: setattr(card._bg_rect, 'size', card.size),
-        )
-
         self._viewer = Visualizer3D()
         # включаем режим редактирования
         self._viewer.edit_mode = True
         self._viewer.on_atom_tap = self._on_atom_tap
         self._viewer.on_bond_tap = self._on_bond_tap
-        
-        card.add_widget(self._viewer)
-        host.add_widget(card)
+
+        host.add_widget(self._viewer)
 
         # сбрасываем температуру и флаги
         self._temperature = 25.0
@@ -543,6 +529,8 @@ class MoleculeEditorScreen(Screen):
         for key, data in REAGENTS.items():
             menu_items.append({
                 "text": data["name"],
+                "font_size": dp(11),
+                "height": dp(32),
                 "on_release": lambda k=key: self._select_reagent(k),
             })
         
@@ -550,11 +538,23 @@ class MoleculeEditorScreen(Screen):
         if not reagent_btn:
             return
         
+        # Фиксированная ширина меню — компактная, одинаковая для всех
+        menu_width = dp(180)
+        
+        # Все меню открываются ВВЕРХ от кнопки
+        # position="bottom" + ver_growth="up" = меню появляется над кнопкой
+        # Высота ограничена для маленьких экранов
+        available_height = Window.height - reagent_btn.y - dp(48)
+        max_height = min(dp(200), max(dp(100), available_height))
+
         self._reagent_menu = MDDropdownMenu(
             caller=reagent_btn,
             items=menu_items,
-            width=min(dp(320), Window.width - dp(24)),
-            position="center",
+            width=menu_width,
+            position="bottom",
+            hor_growth="right",
+            ver_growth="up",
+            max_height=max_height,
         )
         self._reagent_menu.open()
 
