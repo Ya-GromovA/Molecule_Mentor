@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+!assets/llama/*.so
 .Python
 venv/
 env/
@@ -52,7 +53,9 @@ bin/
 project/
 
 # Third party
-third_party/
+third_party/*
+!third_party/llama_cpp/
+!third_party/llama_cpp/**
 
 # Large tools
 tools/bundletool.jar

@@ -527,7 +527,7 @@ class ReactionEditorScreen(Screen):
         self._update_slider_color()
 
     def show_substance_menu(self, category: str) -> None:
-        """Показывает меню выбора веществ по категории."""
+        """Показывает меню выбора веществ над кнопкой."""
         from kivymd.uix.menu import MDDropdownMenu
         
         menu_items = []
@@ -535,8 +535,8 @@ class ReactionEditorScreen(Screen):
             if data["category"] == category:
                 menu_items.append({
                     "text": f"{data['name']} ({key})",
-                    "font_size": sp(12),
-                    "height": dp(34),
+                    "font_size": sp(14),
+                    "height": dp(44),
                     "on_release": lambda k=key: self._add_substance(k),
                 })
         
@@ -544,7 +544,7 @@ class ReactionEditorScreen(Screen):
             self._show_message(f"Нет веществ в категории")
             return
         
-        # находим кнопку-caller
+        # Находим кнопку-caller
         caller = None
         if category == "acid":
             caller = self.ids.get("btn_acid")
@@ -560,15 +560,18 @@ class ReactionEditorScreen(Screen):
         if not caller:
             return
         
-        hor_growth = "right" if caller.center_x < Window.width * 0.5 else "left"
+        # Фиксированная ширина меню
+        menu_width = dp(220)
+        
+        # Высота - чтобы всё содержимое было видно
+        max_height = min(dp(350), Window.height * 0.5)
+
         self._substance_menu = MDDropdownMenu(
             caller=caller,
             items=menu_items,
-            width=min(dp(260), Window.width - dp(32)),
-            position="bottom",
-            hor_growth=hor_growth,
-            ver_growth="up",
-            max_height=max(dp(120), Window.height - dp(220)),
+            width=menu_width,
+            position="auto",
+            max_height=max_height,
         )
         self._substance_menu.open()
 

@@ -56,7 +56,7 @@ class ProgressCard(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
-        self.height = dp(130)
+        self.height = dp(120)
         self.padding = [dp(16), dp(14), dp(16), dp(14)]
         self.spacing = dp(8)
 
@@ -82,7 +82,7 @@ class ProgressCard(BoxLayout):
 
         # строка с лучшим результатом
         self._best_label = MDLabel(
-            text="Лучший результат: —",
+            text="Лучший результат: -",
             halign="left",
             theme_text_color="Custom",
             text_color=(0.7, 0.75, 0.85, 1),
@@ -119,7 +119,7 @@ class ProgressCard(BoxLayout):
     def set_progress(self, best_percent: float, last_percent: float, attempts: int):
         """Обновляет отображение прогресса."""
         if attempts == 0:
-            self._best_label.text = "Тесты ещё не пройдены"
+            self._best_label.text = "Тесты еще не пройдены"
             self._progress_bar.value = 0
             self._stats_label.text = "Пройдите тест после изучения курса"
         else:
@@ -135,7 +135,7 @@ class ProgressCard(BoxLayout):
                 self._progress_bar.indicator_color = (0.9, 0.3, 0.3, 1)  # красный
             
             attempts_word = self._pluralize(attempts, "попытка", "попытки", "попыток")
-            self._stats_label.text = f"Последний: {last_percent:.0f}% · {attempts} {attempts_word}"
+            self._stats_label.text = f"Последний: {last_percent:.0f}% | {attempts} {attempts_word}"
 
     @staticmethod
     def _pluralize(n: int, one: str, few: str, many: str) -> str:
@@ -269,12 +269,22 @@ class CoursesScreen(BaseScreen):
         progress_card.set_progress(best, last, attempts)
         root.add_widget(progress_card)
 
-        # кнопка "Пройти тест"
-        test_btn_row = BoxLayout(size_hint_y=None, height=dp(48), padding=[0, dp(4), 0, dp(4)])
-        test_btn = MDButton(style="filled", on_release=lambda *_: app.open_quiz_for_course(1))
+        # кнопки "Пройти тест" и "Викторины"
+        btn_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12), padding=[0, dp(4), 0, dp(4)])
+        
+        test_btn = MDButton(style="filled", on_release=lambda *_: app.open_tests_selection())
         test_btn.add_widget(MDButtonText(text="Пройти тест"))
-        test_btn_row.add_widget(test_btn)
-        root.add_widget(test_btn_row)
+        btn_row.add_widget(test_btn)
+        
+        quiz_btn = MDButton(
+            style="filled",
+            md_bg_color=(0.85, 0.55, 0.2, 1),
+            on_release=lambda *_: app.open_quiz_selection(),
+        )
+        quiz_btn.add_widget(MDButtonText(text="Викторины"))
+        btn_row.add_widget(quiz_btn)
+        
+        root.add_widget(btn_row)
 
         # заголовок списка курсов
         courses_header = MDLabel(

@@ -10,6 +10,7 @@ from kivy.app import App
 OFFLINE_MODEL_NAME = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 MODEL_SIZE_BYTES = 2_019_377_408  # ~1.88 GB
+MODEL_MIN_BYTES = MODEL_SIZE_BYTES - (10 * 1024 * 1024)  # допускаем небольшой разброс
 
 
 def _project_root() -> Path:
@@ -21,8 +22,29 @@ def _asset_models_dir() -> Path:
     return _project_root() / "assets" / "models"
 
 
+def _is_complete_model(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        return path.stat().st_size >= MODEL_MIN_BYTES
+    except OSError:
+        return False
+
+
+def _bundled_model_path() -> Optional[Path]:
+    """Возвращает путь к модели, включённой в APK (FULL версия)."""
+    bundled = _asset_models_dir() / "offline_model.gguf"
+    if bundled.exists() and bundled.stat().st_size >= MODEL_MIN_BYTES:
+        return bundled
+    return None
+
+
 def is_model_available(model_filename: str) -> bool:
-    """Проверяет, доступна ли модель (уже собрана или есть части для сборки)."""
+    """Проверяет, доступна ли модель (уже собрана, есть части, или включена в APK)."""
+    # Проверяем модель, включённую в APK (FULL версия)
+    if _bundled_model_path() is not None:
+        return True
+    
     # Сначала проверяем части — они не зависят от App
     parts_dir = _asset_models_dir()
     parts = list(parts_dir.glob(f"{model_filename}.part*"))
@@ -37,7 +59,7 @@ def is_model_available(model_filename: str) -> bool:
     user_dir = Path(app.user_data_dir).resolve()
     out_path = user_dir / "models" / model_filename
     
-    if out_path.exists() and out_path.stat().st_size > 0:
+    if _is_complete_model(out_path):
         return True
     
     return False
@@ -111,6 +133,11 @@ def download_model(
                 downloaded += len(chunk)
                 if progress_callback:
                     progress_callback(downloaded, total_size)
+
+    if downloaded < MODEL_MIN_BYTES:
+        raise RuntimeError(
+            f"Скачивание завершилось преждевременно: {downloaded} из ~{MODEL_SIZE_BYTES} байт"
+        )
     
     # Переименовываем в финальный файл
     os.replace(tmp_path, out_path)
@@ -121,9 +148,10 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
     """
     Гарантирует, что итоговый .gguf существует в user_data_dir/models/.
     
-    1. Если модель уже собрана — возвращает путь
-    2. Если есть части (.part0000...) — собирает из них
-    3. Если ничего нет — выбрасывает FileNotFoundError
+    1. Если модель уже собрана в user_data_dir — возвращает путь
+    2. Если модель включена в APK (FULL версия) — копирует её
+    3. Если есть части (.part0000...) — собирает из них
+    4. Если ничего нет — выбрасывает FileNotFoundError
        (для Lite версии нужно сначала вызвать download_model)
 
     Возвращает путь к итоговому .gguf.
@@ -137,8 +165,31 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = out_dir / model_filename
-    if out_path.exists() and out_path.stat().st_size > 0:
-        return out_path
+    if out_path.exists():
+        if _is_complete_model(out_path):
+            return out_path
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
+
+    # Проверяем модель, включённую в APK (FULL версия)
+    bundled = _bundled_model_path()
+    if bundled is not None:
+        print(f"[MODEL] Копирование модели из APK: {bundled} -> {out_path}")
+        tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+        try:
+            import shutil
+            shutil.copy2(bundled, tmp_path)
+            os.replace(tmp_path, out_path)
+            print(f"[MODEL] Модель скопирована успешно: {out_path.stat().st_size} байт")
+            return out_path
+        except Exception as e:
+            print(f"[MODEL] Ошибка копирования модели: {e}")
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     if parts_dir is None:
         parts_dir = _asset_models_dir()
@@ -161,6 +212,13 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
                     if not buf:
                         break
                     w.write(buf)
+
+    try:
+        if tmp_path.stat().st_size < MODEL_MIN_BYTES:
+            tmp_path.unlink(missing_ok=True)
+            raise RuntimeError("Собранная модель повреждена или неполная")
+    except OSError:
+        pass
 
     os.replace(tmp_path, out_path)
     return out_path
