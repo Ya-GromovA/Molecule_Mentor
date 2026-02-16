@@ -29,7 +29,7 @@
             text_color: app.mm_text
             bold: True
             adaptive_height: True
-            font_size: max(dp(70), min(dp(110), root.height * 0.10))
+            font_size: max(dp(100), min(dp(160), root.height * 0.15))
 
         Widget:
             size_hint_y: 0.04
@@ -144,7 +144,7 @@
 
         # bottom spacer
         Widget:
-            size_hint_y: 0.15
+            size_hint_y: 0.08
 
 
 <CoursesScreen>:
@@ -162,8 +162,40 @@
         spacing: dp(10)
 
 <QuizScreen>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
     MDBoxLayout:
         id: quiz_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<QuizSelectionScreen>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    MDBoxLayout:
+        id: quiz_selection_container
+        orientation: "vertical"
+        padding: dp(10)
+        spacing: dp(10)
+
+<StatsScreen>:
+    canvas.before:
+        Color:
+            rgba: app.mm_bg
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    MDBoxLayout:
+        id: stats_container
         orientation: "vertical"
         padding: dp(10)
         spacing: dp(10)
@@ -292,13 +324,13 @@
 
     MDBoxLayout:
         orientation: "vertical"
-        padding: dp(4)
-        spacing: dp(2)
+        padding: dp(2)
+        spacing: dp(1)
 
         # Сообщение + кнопка запуска (над полем молекулы)
         BoxLayout:
             size_hint: 1, None
-            height: dp(24)
+            height: dp(30)
             spacing: dp(6)
 
             MDLabel:
@@ -311,7 +343,10 @@
                 font_size: dp(11)
                 bold: True
                 size_hint_x: 1
-                text_size: self.width, None
+                text_size: self.width, self.height
+                shorten: True
+                shorten_from: "right"
+                max_lines: 1
 
             MDButton:
                 id: run_reaction_btn
