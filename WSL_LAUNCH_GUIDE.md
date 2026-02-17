@@ -78,5 +78,5 @@ ls -l data/secrets/hf_token.txt
 Соберите Android APK и тестируйте на устройстве:
 
 ```bash
-./build-lite.sh
+./build.sh lite
 ```
