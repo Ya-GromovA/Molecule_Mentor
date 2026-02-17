@@ -5,6 +5,7 @@ from kivy.uix.screenmanager import Screen
 
 
 class BaseScreen(Screen):
+    """Экран."""
     title = StringProperty("")
 
     def get_app(self):

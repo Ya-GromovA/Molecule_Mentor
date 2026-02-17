@@ -18,7 +18,7 @@ from kivymd.uix.scrollview import MDScrollView
 from .base_screen import BaseScreen
 
 
-# Категории викторин
+
 QUIZ_CATEGORIES = [
     {
         "id": "quick",
@@ -87,16 +87,16 @@ class CategoryCard(ButtonBehavior, BoxLayout):
         self._on_select = on_select
         self._color = category.get("color", (0.3, 0.3, 0.4, 1))
 
-        # Фон карточки
+
         with self.canvas.before:
             Color(*self._color[:3], 0.25)
             self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(10)])
 
         self.bind(pos=self._update_rect, size=self._update_rect)
 
-        # Заголовок с количеством вопросов
+
         title_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(22))
-        
+
         title_label = MDLabel(
             text=category["title"],
             bold=True,
@@ -120,7 +120,7 @@ class CategoryCard(ButtonBehavior, BoxLayout):
 
         self.add_widget(title_row)
 
-        # Краткий подзаголовок
+
         subtitle_text = category.get("subtitle", "")
         if subtitle_text:
             subtitle_label = MDLabel(
@@ -145,7 +145,7 @@ class CategoryCard(ButtonBehavior, BoxLayout):
 
 
 class QuizSelectionScreen(BaseScreen):
-    """Экран выбора викторины."""
+    """Выбор викторины."""
 
     def on_pre_enter(self, *args):
         self.title = "Викторины"
@@ -158,7 +158,7 @@ class QuizSelectionScreen(BaseScreen):
 
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
 
-        # Заголовок
+
         header = MDLabel(
             text="Выберите викторину",
             halign="center",
@@ -171,7 +171,7 @@ class QuizSelectionScreen(BaseScreen):
         )
         root.add_widget(header)
 
-        # Статистика (если есть)
+
         stats = self._get_stats()
         if stats:
             stats_label = MDLabel(
@@ -185,7 +185,7 @@ class QuizSelectionScreen(BaseScreen):
             )
             root.add_widget(stats_label)
 
-        # Кнопка статистики
+
         stats_btn = MDButton(
             style="outlined",
             size_hint=(None, None),
@@ -196,7 +196,7 @@ class QuizSelectionScreen(BaseScreen):
         stats_btn.add_widget(MDButtonText(text="Моя статистика"))
         root.add_widget(stats_btn)
 
-        # Список категорий
+
         scroll = MDScrollView()
         categories_box = BoxLayout(
             orientation="vertical",
@@ -225,16 +225,16 @@ class QuizSelectionScreen(BaseScreen):
             app = self.get_app()
             conn = sqlite3.connect(app.courses_db)
             conn.row_factory = sqlite3.Row
-            
+
             row = conn.execute("""
-                SELECT COUNT(*) as attempts, 
+                SELECT COUNT(*) as attempts,
                        MAX(percent) as best,
                        AVG(percent) as avg
                 FROM mm_quiz_attempts
             """).fetchone()
-            
+
             conn.close()
-            
+
             if row and row["attempts"] > 0:
                 return f"Пройдено: {row['attempts']} | Лучший: {row['best']:.0f}% | Средний: {row['avg']:.0f}%"
         except Exception:

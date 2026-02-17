@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# /home/ulyashka_88/molecule-mentor/tools/generate_reaction_frames.py
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -17,8 +17,8 @@ if str(BASE_DIR) not in sys.path:
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-# IMPORTANT: requires /utils/reaction_engine.py alias
-from utils.reaction_engine import REACTIONS, get_reaction  # type: ignore
+
+from utils.reaction_engine import REACTIONS, get_reaction
 
 
 OUT_ROOT_DEFAULT = BASE_DIR / "assets" / "reactions"
@@ -69,7 +69,7 @@ def _embed_3d(m: Chem.Mol, seed: int = 1) -> Chem.Mol:
         except Exception:
             pass
 
-    # Skip optimization for metal-containing systems (often warnings)
+
     if not _contains_metal(m):
         try:
             AllChem.UFFOptimizeMolecule(m, maxIters=200)
@@ -139,7 +139,7 @@ def _center_atoms(atoms: List[Dict]) -> List[Dict]:
 
 
 def _spread_atoms(atoms: List[Dict], scale: float = 1.7) -> List[Dict]:
-    # Make it more readable in 2D viewer by stretching layout a bit.
+
     out = []
     for a in atoms:
         out.append({**a, "x": a["x"] * scale, "y": a["y"] * scale, "z": a["z"] * scale})
@@ -153,12 +153,12 @@ def _stage_scene_normal(species: List[str], seed_base: int) -> Tuple[List[Dict],
         m = _embed_3d(m, seed=seed_base + i * 17)
         mols.append(m)
 
-    # Combine and keep RDKit bonds as is (within each molecule)
+
     combo = _combine(mols)
     atoms = _center_atoms(_mol_to_atoms(combo))
     atoms = _spread_atoms(atoms, 1.7)
 
-    # Bonds: adjust indices per molecule
+
     bonds: List[List[int]] = []
     offset = 0
     for m in mols:
@@ -209,8 +209,8 @@ def generate_for_reaction(reaction_id: str, out_root: Path, hold: int = 18) -> P
     frames: List[Dict] = []
     stages_meta: List[Dict] = []
 
-    # If ANY stage is mapped, we treat mapped stages with a fixed pool
-    # (each mapped stage must provide pool_species)
+
+
     mapped_pool_atoms: Optional[List[Dict]] = None
     mapped_pool_count: int = 0
     prev_bonds_override: List[Tuple[int, int]] = []
@@ -228,7 +228,7 @@ def generate_for_reaction(reaction_id: str, out_root: Path, hold: int = 18) -> P
                 mapped_pool_atoms, mapped_pool_count = _mapped_pool_atoms(pool, seed_base=seed_base)
 
             bonds_override = list(getattr(st, "bonds_override", []))
-            # Validate indices
+
             for a, b in bonds_override:
                 if a < 0 or b < 0 or a >= mapped_pool_count or b >= mapped_pool_count:
                     raise ValueError(f"{rxn.id} stage {si} has bond ({a},{b}) out of range 0..{mapped_pool_count-1}")

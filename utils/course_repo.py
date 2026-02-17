@@ -36,7 +36,7 @@ class CourseTopic:
 class TopicBlock:
     id: int
     topic_id: int
-    block_type: str  # text или image
+    block_type: str
     content: str
     caption: Optional[str]
     position: int
@@ -53,7 +53,7 @@ class CourseRepo:
         conn.row_factory = sqlite3.Row
         return conn
 
-    # -------- каталог курсов --------
+
     def list_courses(self) -> list[Course]:
         with self._conn() as c:
             rows = c.execute("select id, grade, level, title from courses order by grade, level").fetchall()
@@ -142,7 +142,7 @@ class CourseRepo:
             return None
         return int(r["course_id"])
 
-    # -------- прогресс и тесты --------
+
     def has_mm_tables(self) -> bool:
         with self._conn() as c:
             rows = c.execute(
@@ -152,8 +152,8 @@ class CourseRepo:
         return {"mm_quizzes", "mm_quiz_questions", "mm_quiz_attempts", "mm_course_progress"}.issubset(names)
 
     def get_course_progress(self, course_id: int) -> Tuple[float, float, int]:
-        # возвращаем (лучший %, последний %, число попыток)
-        # если таблицы нет - вернём нули
+
+
         with self._conn() as c:
             t = c.execute(
                 "select name from sqlite_master where type='table' and name='mm_course_progress'"
@@ -171,7 +171,7 @@ class CourseRepo:
         return (float(r["best_percent"]), float(r["last_percent"]), int(r["attempts_count"]))
 
     def reset_all_quiz_progress(self) -> None:
-        # сбрасывает попытки и прогресс тестов
+
         with self._conn() as c:
             t = c.execute(
                 "select name from sqlite_master where type='table' and name='mm_course_progress'"

@@ -27,13 +27,13 @@ class TestCard(ButtonBehavior, BoxLayout):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
-        self.height = dp(64)  # увеличена высота
+        self.height = dp(64)
         self.padding = [dp(16), dp(12)]
         self.spacing = dp(2)
 
         self._on_select = on_select
-        
-        # Цвет по умолчанию как на главной (mm_surface2)
+
+
         bg_color = color if color else (0.13, 0.16, 0.24, 1)
 
         with self.canvas.before:
@@ -65,7 +65,7 @@ class TestCard(ButtonBehavior, BoxLayout):
 
 
 class TestsSelectionScreen(BaseScreen):
-    """Экран выбора теста."""
+    """Выбор теста."""
 
     def on_pre_enter(self, *args):
         self.title = "Тесты"
@@ -176,9 +176,9 @@ class TestsSelectionScreen(BaseScreen):
         )
         content.bind(minimum_height=content.setter("height"))
 
-        # Лавандовый цвет для всех карточек тестов
+
         card_color = (0.45, 0.42, 0.65, 1)
-        
+
         for test in tests:
             def _make_on_select(test_data: Dict[str, Any]):
                 def _on_select():

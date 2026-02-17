@@ -3,7 +3,7 @@ import sys
 
 from typing import Any, Dict
 
-# Avoid "LookupError: unknown encoding: ascii" when open() called in a destructor
+
 outnull_file = open(os.devnull, "w")
 errnull_file = open(os.devnull, "w")
 
@@ -12,15 +12,15 @@ STDERR_FILENO = 2
 
 
 class suppress_stdout_stderr(object):
-    # NOTE: these must be "saved" here to avoid exceptions when using
-    #       this context manager inside of a __del__ method
+
+
     sys = sys
     os = os
 
     def __init__(self, disable: bool = True):
         self.disable = disable
 
-    # Oddly enough this works better than the contextlib version
+
     def __enter__(self):
         if self.disable:
             return self
@@ -45,7 +45,7 @@ class suppress_stdout_stderr(object):
         if self.disable:
             return
 
-        # Check if sys.stdout and sys.stderr have fileno method
+
         self.sys.stdout = self.old_stdout
         self.sys.stderr = self.old_stderr
 

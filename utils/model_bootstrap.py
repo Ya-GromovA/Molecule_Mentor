@@ -6,15 +6,15 @@ from typing import Optional, Callable
 
 from kivy.app import App
 
-# URL для скачивания модели (HuggingFace)
-OFFLINE_MODEL_NAME = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
-MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
-MODEL_SIZE_BYTES = 2_019_377_408  # ~1.88 GB
-MODEL_MIN_BYTES = MODEL_SIZE_BYTES - (10 * 1024 * 1024)  # допускаем небольшой разброс
+
+OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+MODEL_SIZE_BYTES = 820_000_000
+MODEL_MIN_BYTES = 200 * 1024 * 1024
 
 
 def _project_root() -> Path:
-    # utils/model_bootstrap.py -> utils -> project root
+
     return Path(__file__).resolve().parent.parent
 
 
@@ -26,43 +26,77 @@ def _is_complete_model(path: Path) -> bool:
     if not path.exists():
         return False
     try:
-        return path.stat().st_size >= MODEL_MIN_BYTES
+        if path.stat().st_size < MODEL_MIN_BYTES:
+            return False
+        with path.open("rb") as f:
+            return f.read(4) == b"GGUF"
     except OSError:
         return False
 
 
 def _bundled_model_path() -> Optional[Path]:
     """Возвращает путь к модели, включённой в APK (FULL версия)."""
-    bundled = _asset_models_dir() / "offline_model.gguf"
-    if bundled.exists() and bundled.stat().st_size >= MODEL_MIN_BYTES:
-        return bundled
+    models_dir = _asset_models_dir()
+
+    candidates = [
+        models_dir / "offline_model.gguf",
+        models_dir / OFFLINE_MODEL_NAME,
+    ]
+
+    for p in candidates:
+        if _is_complete_model(p):
+            return p
+
+    # Запасной вариант: если имя файла модели изменилось,
+    # берем любой валидный GGUF из assets/models.
+    for p in sorted(models_dir.glob("*.gguf")):
+        if _is_complete_model(p):
+            return p
+
     return None
 
 
 def is_model_available(model_filename: str) -> bool:
     """Проверяет, доступна ли модель (уже собрана, есть части, или включена в APK)."""
-    # Проверяем модель, включённую в APK (FULL версия)
+
     if _bundled_model_path() is not None:
         return True
-    
-    # Сначала проверяем части — они не зависят от App
+
+
     parts_dir = _asset_models_dir()
     parts = list(parts_dir.glob(f"{model_filename}.part*"))
     if len(parts) > 0:
         return True
-    
-    # Проверяем собранную модель в user_data_dir
+
+
     app = App.get_running_app()
     if app is None:
         return False
-    
+
     user_dir = Path(app.user_data_dir).resolve()
     out_path = user_dir / "models" / model_filename
-    
+
     if _is_complete_model(out_path):
         return True
-    
+
     return False
+
+
+def get_available_model_path(model_filename: str) -> Optional[Path]:
+    """Возвращает путь к уже доступной модели без копирования."""
+    bundled = _bundled_model_path()
+    if bundled is not None:
+        return bundled
+
+    app = App.get_running_app()
+    if app is None:
+        return None
+
+    user_dir = Path(app.user_data_dir).resolve()
+    out_path = user_dir / "models" / model_filename
+    if _is_complete_model(out_path):
+        return out_path
+    return None
 
 
 def needs_download(model_filename: str) -> bool:
@@ -76,44 +110,44 @@ def download_model(
 ) -> Path:
     """
     Скачивает модель с HuggingFace.
-    
+
     Args:
         model_filename: Имя файла модели (например, "Llama-3.2-3B-Instruct-Q4_K_M.gguf")
         progress_callback: Функция обратного вызова (downloaded_bytes, total_bytes)
-    
+
     Returns:
         Path к скачанному файлу
-    
+
     Raises:
         Exception: При ошибке скачивания
     """
     import requests
-    
+
     app = App.get_running_app()
     if app is None:
         raise RuntimeError("App not running")
-    
+
     user_dir = Path(app.user_data_dir).resolve()
     out_dir = user_dir / "models"
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     out_path = out_dir / model_filename
     tmp_path = out_path.with_suffix(out_path.suffix + ".download")
-    
-    # Проверяем, есть ли частично скачанный файл (для resume)
+
+
     resume_pos = 0
     if tmp_path.exists():
         resume_pos = tmp_path.stat().st_size
-    
+
     headers = {}
     if resume_pos > 0:
         headers["Range"] = f"bytes={resume_pos}-"
-    
+
     response = requests.get(MODEL_DOWNLOAD_URL, headers=headers, stream=True, timeout=30)
     response.raise_for_status()
-    
-    # Определяем общий размер
-    if response.status_code == 206:  # Partial Content (resume)
+
+
+    if response.status_code == 206:
         content_range = response.headers.get("Content-Range", "")
         if "/" in content_range:
             total_size = int(content_range.split("/")[-1])
@@ -121,13 +155,13 @@ def download_model(
             total_size = MODEL_SIZE_BYTES
     else:
         total_size = int(response.headers.get("Content-Length", MODEL_SIZE_BYTES))
-        resume_pos = 0  # Сервер не поддержал resume, начинаем заново
-    
+        resume_pos = 0
+
     mode = "ab" if resume_pos > 0 else "wb"
     downloaded = resume_pos
-    
+
     with tmp_path.open(mode) as f:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):  # 1 MB chunks
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
             if chunk:
                 f.write(chunk)
                 downloaded += len(chunk)
@@ -138,8 +172,15 @@ def download_model(
         raise RuntimeError(
             f"Скачивание завершилось преждевременно: {downloaded} из ~{MODEL_SIZE_BYTES} байт"
         )
-    
-    # Переименовываем в финальный файл
+
+    try:
+        with tmp_path.open("rb") as f:
+            if f.read(4) != b"GGUF":
+                raise RuntimeError("Скачанный файл не является корректной GGUF моделью")
+    except OSError as e:
+        raise RuntimeError(f"Не удалось проверить скачанную модель: {e}")
+
+
     os.replace(tmp_path, out_path)
     return out_path
 
@@ -147,7 +188,7 @@ def download_model(
 def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> Path:
     """
     Гарантирует, что итоговый .gguf существует в user_data_dir/models/.
-    
+
     1. Если модель уже собрана в user_data_dir — возвращает путь
     2. Если модель включена в APK (FULL версия) — копирует её
     3. Если есть части (.part0000...) — собирает из них
@@ -159,7 +200,7 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
     app = App.get_running_app()
     if app is None:
         raise RuntimeError("App not running")
-    
+
     user_dir = Path(app.user_data_dir).resolve()
     out_dir = user_dir / "models"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -173,23 +214,12 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
         except OSError:
             pass
 
-    # Проверяем модель, включённую в APK (FULL версия)
+
     bundled = _bundled_model_path()
     if bundled is not None:
-        print(f"[MODEL] Копирование модели из APK: {bundled} -> {out_path}")
-        tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
-        try:
-            import shutil
-            shutil.copy2(bundled, tmp_path)
-            os.replace(tmp_path, out_path)
-            print(f"[MODEL] Модель скопирована успешно: {out_path.stat().st_size} байт")
-            return out_path
-        except Exception as e:
-            print(f"[MODEL] Ошибка копирования модели: {e}")
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        # FULL версия: используем модель прямо из assets, не копируя ~500MB при старте.
+        print(f"[MODEL] Используется встроенная модель из APK: {bundled}")
+        return bundled
 
     if parts_dir is None:
         parts_dir = _asset_models_dir()
@@ -203,7 +233,7 @@ def ensure_gguf_ready(model_filename: str, parts_dir: Optional[Path] = None) -> 
 
     tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
 
-    # Склейка большими блоками, чтобы было быстрее
+
     with tmp_path.open("wb") as w:
         for part in parts:
             with part.open("rb") as r:

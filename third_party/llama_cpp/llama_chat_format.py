@@ -37,25 +37,25 @@ import llama_cpp.llama_grammar as llama_grammar
 from ._logger import logger
 from ._utils import suppress_stdout_stderr, Singleton
 
-### Common Chat Templates and Special Tokens ###
 
-# Source: https://huggingface.co/teknium/OpenHermes-2.5-Mistral-7B/blob/main/tokenizer_config.json
+
+
 CHATML_CHAT_TEMPLATE = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 CHATML_BOS_TOKEN = "<s>"
 CHATML_EOS_TOKEN = "<|im_end|>"
 
-# Source: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1/blob/main/tokenizer_config.json
+
 MISTRAL_INSTRUCT_CHAT_TEMPLATE = "{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token + ' ' }}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
 MISTRAL_INSTRUCT_BOS_TOKEN = "<s>"
 MISTRAL_INSTRUCT_EOS_TOKEN = "</s>"
 
-# Source: https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1/blob/main/tokenizer_config.json
+
 MIXTRAL_INSTRUCT_CHAT_TEMPLATE = "{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
 
-# Source: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct/blob/main/tokenizer_config.json
+
 LLAMA3_INSTRUCT_CHAT_TEMPLATE = "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}"
 
-### Chat Completion Handler ###
+
 
 
 class LlamaChatCompletionHandler(Protocol):
@@ -68,9 +68,9 @@ class LlamaChatCompletionHandler(Protocol):
     def __call__(
         self,
         *,
-        # llama.cpp instance
+
         llama: llama.Llama,
-        # openai api parameters
+
         messages: List[llama_types.ChatCompletionRequestMessage],
         functions: Optional[List[llama_types.ChatCompletionFunction]] = None,
         function_call: Optional[llama_types.ChatCompletionRequestFunctionCall] = None,
@@ -91,7 +91,7 @@ class LlamaChatCompletionHandler(Protocol):
         repeat_penalty: float = 1.1,
         model: Optional[str] = None,
         logit_bias: Optional[Dict[str, float]] = None,
-        # llama.cpp parameters
+
         min_p: float = 0.05,
         typical_p: float = 1.0,
         tfs_z: float = 1.0,
@@ -102,7 +102,7 @@ class LlamaChatCompletionHandler(Protocol):
         grammar: Optional[llama.LlamaGrammar] = None,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
-        **kwargs,  # type: ignore
+        **kwargs,
     ) -> Union[
         llama_types.CreateChatCompletionResponse,
         Iterator[llama_types.CreateChatCompletionStreamResponse],
@@ -160,7 +160,7 @@ def register_chat_completion_handler(name: str):
     return decorator
 
 
-### Chat Formatter ###
+
 
 
 @dataclasses.dataclass
@@ -368,10 +368,10 @@ def _convert_completion_to_chat(
     llama_types.CreateChatCompletionResponse, Iterator[llama_types.ChatCompletionChunk]
 ]:
     if stream:
-        chunks: Iterator[llama_types.CreateCompletionStreamResponse] = completion_or_chunks  # type: ignore
+        chunks: Iterator[llama_types.CreateCompletionStreamResponse] = completion_or_chunks
         return _convert_text_completion_chunks_to_chat(chunks)
     else:
-        completion: llama_types.Completion = completion_or_chunks  # type: ignore
+        completion: llama_types.Completion = completion_or_chunks
         return _convert_text_completion_to_chat(completion)
 
 
@@ -384,10 +384,10 @@ def _convert_completion_to_chat_function(
     stream: bool,
 ):
     if not stream:
-        completion: llama_types.CreateCompletionResponse = completion_or_chunks  # type: ignore
+        completion: llama_types.CreateCompletionResponse = completion_or_chunks
         assert "usage" in completion
         tool_id = "call_" + "_0_" + tool_name + "_" + completion["id"]
-        # TODO: Fix for legacy function calls
+
         chat_completion: llama_types.CreateChatCompletionResponse = {
             "id": "chat" + completion["id"],
             "object": "chat.completion",
@@ -422,12 +422,12 @@ def _convert_completion_to_chat_function(
         }
         return chat_completion
     else:
-        chunks: Iterator[llama_types.CreateCompletionStreamResponse] = completion_or_chunks  # type: ignore
+        chunks: Iterator[llama_types.CreateCompletionStreamResponse] = completion_or_chunks
 
         def _stream_response_to_function_stream(
             chunks: Iterator[llama_types.CreateCompletionStreamResponse],
         ) -> Iterator[llama_types.CreateChatCompletionStreamResponse]:
-            # blank first message
+
             first = True
             id_ = None
             created = None
@@ -588,7 +588,7 @@ def chat_formatter_to_chat_completion_handler(
         logit_bias: Optional[Dict[str, float]] = None,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
-        **kwargs,  # type: ignore
+        **kwargs,
     ) -> Union[
         llama_types.CreateChatCompletionResponse,
         Iterator[llama_types.CreateChatCompletionStreamResponse],
@@ -619,7 +619,7 @@ def chat_formatter_to_chat_completion_handler(
                 response_format, verbose=llama.verbose
             )
 
-        # Convert legacy functions to tools
+
         if functions is not None:
             tools = [
                 {
@@ -629,7 +629,7 @@ def chat_formatter_to_chat_completion_handler(
                 for function in functions
             ]
 
-        # Convert legacy function_call to tool_choice
+
         if function_call is not None:
             if isinstance(function_call, str) and (
                 function_call == "none" or function_call == "auto"
@@ -655,7 +655,7 @@ def chat_formatter_to_chat_completion_handler(
                 raise ValueError(f"Tool choice '{name}' not found in tools.")
             schema = tool["function"]["parameters"]
             try:
-                # create grammar from json schema
+
                 grammar = llama_grammar.LlamaGrammar.from_json_schema(
                     json.dumps(schema), verbose=llama.verbose
                 )
@@ -704,21 +704,21 @@ def chat_formatter_to_chat_completion_handler(
 def hf_autotokenizer_to_chat_formatter(
     pretrained_model_name_or_path: Union[str, os.PathLike[str]]
 ) -> ChatFormatter:
-    # https://huggingface.co/docs/transformers/main/chat_templating
-    # https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1#instruction-format
-    # https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1/blob/main/tokenizer_config.json
-    from transformers import AutoTokenizer  # type: ignore
 
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)  # type: ignore
+
+
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
 
     def format_autotokenizer(
         messages: List[llama_types.ChatCompletionRequestMessage],
         **kwargs: Any,
     ) -> ChatFormatterResponse:
-        tokenizer.use_default_system_prompt = False  # type: ignore
-        prompt: str = tokenizer.apply_chat_template(messages, tokenize=False)  # type: ignore
+        tokenizer.use_default_system_prompt = False
+        prompt: str = tokenizer.apply_chat_template(messages, tokenize=False)
         assert isinstance(prompt, str)
-        # Return formatted prompt and eos token by default
+
         return ChatFormatterResponse(
             prompt=prompt, stop=tokenizer.eos_token, added_special=True
         )
@@ -760,8 +760,8 @@ def hf_tokenizer_config_to_chat_formatter(
         messages: List[llama_types.ChatCompletionRequestMessage],
         **kwargs: Any,
     ) -> ChatFormatterResponse:
-        # TODO: veryify this is correct
-        # Add a blank assistant message to the end of the messages to prompt the model to generate a response
+
+
         if add_generation_prompt:
             messages = [
                 *messages,
@@ -810,8 +810,8 @@ def guess_chat_format_from_gguf_metadata(metadata: Dict[str, str]) -> Optional[s
     return None
 
 
-### Utility functions for formatting chat prompts ###
-# TODO: Replace these with jinja2 templates
+
+
 
 
 def _get_system_message(
@@ -906,7 +906,7 @@ def _format_add_colon_space_single(
         if message:
             ret += role + ": " + message + sep
         else:
-            ret += role + ": "  # must be end with a space
+            ret += role + ": "
     return ret
 
 
@@ -971,7 +971,7 @@ def _grammar_for_response_format(
         return _grammar_for_json(verbose=verbose)
 
 
-### Chat Formats ###
+
 
 
 def register_chat_format(name: str):
@@ -985,8 +985,8 @@ def register_chat_format(name: str):
     return decorator
 
 
-# see https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/tokenization_llama.py
-# system prompt is "embedded" in the first message
+
+
 @register_chat_format("llama-2")
 def format_llama2(
     messages: List[llama_types.ChatCompletionRequestMessage],
@@ -1002,8 +1002,8 @@ def format_llama2(
     return ChatFormatterResponse(prompt=_prompt)
 
 
-# Chat format for Llama-3 models, see more details at:
-# https://github.com/meta-llama/llama3/blob/main/llama/tokenizer.py#L202-L229
+
+
 @register_chat_format("llama-3")
 def format_llama3(
     messages: List[llama_types.ChatCompletionRequestMessage],
@@ -1222,7 +1222,7 @@ def format_open_orca(
     )
     roles = ("User", "Assistant")
     sep = "<|end_of_turn|>\n"
-    # stop_token_ids=[32000, 32001],  # "<|end_of_turn|>"
+
     stop_str = "User"
     system_message = system_template.format(system_message=system_message)
     _messages = _map_roles(messages, dict(zip(roles, roles)))
@@ -1353,8 +1353,8 @@ def format_openchat(
     return ChatFormatterResponse(prompt=_prompt, stop=_sep)
 
 
-# Chat format for Saiga models, see more details and available models:
-# https://huggingface.co/collections/IlyaGusev/saiga2-saigamistral-6505d4ccc3d1e53166b636cd
+
+
 @register_chat_format("saiga")
 def format_saiga(
     messages: list[llama_types.ChatCompletionRequestMessage],
@@ -1370,13 +1370,13 @@ def format_saiga(
             _prompt += _message_template.format(role=role, content=content)
         else:
             _prompt += f"<s>{role}\n"
-    # Response template
+
     _prompt += "<s>bot"
     return ChatFormatterResponse(prompt=_prompt.strip())
 
 
-# Chat format for Google's Gemma models, see more details and available models:
-# https://huggingface.co/collections/google/gemma-release-65d5efbccdbb8c4202ec078b
+
+
 @register_chat_format("gemma")
 def format_gemma(
     messages: List[llama_types.ChatCompletionRequestMessage],
@@ -1395,7 +1395,7 @@ def format_gemma(
     return ChatFormatterResponse(prompt=_prompt, stop=_sep)
 
 
-# Tricky chat formats that require custom chat handlers
+
 
 
 @register_chat_completion_handler("functionary")
@@ -1425,7 +1425,7 @@ def functionary_chat_handler(
     model: Optional[str] = None,
     logits_processor: Optional[llama.LogitsProcessorList] = None,
     grammar: Optional[llama.LlamaGrammar] = None,
-    **kwargs,  # type: ignore
+    **kwargs,
 ) -> Union[llama_types.ChatCompletion, Iterator[llama_types.ChatCompletionChunk]]:
     SYSTEM_MESSAGE = """A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. The assistant calls functions with appropriate input when necessary"""
 
@@ -1434,10 +1434,10 @@ def functionary_chat_handler(
     ) -> str:
         indent = "  " * indent_level
         if "$ref" in param:
-            # Reference to a shared definition
+
             ref_name = param["$ref"].split("/")[
                 -1
-            ]  # Extract the type name from the reference
+            ]
             return ref_name
         elif param.get("type") == "array":
             items = param.get("items", {})
@@ -1456,10 +1456,10 @@ def functionary_chat_handler(
             nested_schema += indent + "}"
             return nested_schema
         elif "enum" in param:
-            # Enum type
+
             return " | ".join([f'"{enum_value}"' for enum_value in param["enum"]])
         else:
-            # Simple type
+
             return param.get("type", "any")
 
     def generate_shared_definitions(shared_defs, indent_level: int) -> str:
@@ -1472,7 +1472,7 @@ def functionary_chat_handler(
                     def_properties, indent_level, shared_defs
                 )
             elif "enum" in def_properties:
-                # Enum type
+
                 shared_definitions += " | ".join(
                     [f'"{enum_value}"' for enum_value in def_properties["enum"]]
                 )
@@ -1485,7 +1485,7 @@ def functionary_chat_handler(
         )
         schema += f"namespace {namespace} {{\n\n"
 
-        # Generate shared definitions
+
         shared_definitions = {}
         for function in functions:
             parameters = function.get("parameters", {})
@@ -1547,10 +1547,10 @@ def functionary_chat_handler(
         )
 
         for message in messages:
-            # Function call responses
+
             if message["role"] == "function" and "name" in message:
                 message["name"] = f"functions.{message['name']}"
-            # Function call requests by assistant
+
             if "function_call" in message:
                 message["function_call"][
                     "name"
@@ -1589,7 +1589,7 @@ def functionary_chat_handler(
                 elif "tool_calls" in msg and len(msg["tool_calls"]) > 0:
                     for tool_call in msg[
                         "tool_calls"
-                    ]:  # NOTE: probably doesn't work with the functionary model
+                    ]:
                         return f"assistant to={tool_call['id']}:\n{tool_call['function']['arguments']}</s>\n"
                 elif msg["content"] is None:
                     return "assistant"
@@ -1632,7 +1632,7 @@ def functionary_chat_handler(
             logits_processor=logits_processor,
             grammar=grammar,
         )
-        return _convert_completion_to_chat(completion_or_completion_chunks, stream=stream)  # type: ignore
+        return _convert_completion_to_chat(completion_or_completion_chunks, stream=stream)
 
     if function_call is None or (
         isinstance(function_call, str) and function_call == "auto"
@@ -1640,9 +1640,9 @@ def functionary_chat_handler(
         stop = "\n"
         completion: llama_types.Completion = llama.create_completion(
             prompt=prompt, stop=stop, stream=False
-        )  # type: ignore
+        )
         completion_text = completion["choices"][0]["text"]
-        # strip " to=functions." and ending ":"
+
         function_call = completion_text.split(".")[-1][:-1]
         new_prompt = prompt + completion_text + stop
     elif isinstance(function_call, str) and function_call != "none":
@@ -1711,17 +1711,17 @@ def functionary_chat_handler(
         mirostat_eta=mirostat_eta,
         model=model,
         logits_processor=logits_processor,
-    )  # type: ignore
+    )
 
     assert "usage" in completion
     assert isinstance(function_call, str)
-    assert stream is False  # TODO: support stream mode
+    assert stream is False
 
     if llama.verbose:
         print(new_prompt)
         print(completion["choices"][0]["text"])
 
-    # TODO: support stream mode
+
     return llama_types.CreateChatCompletionResponse(
         id="chat" + completion["id"],
         object="chat.completion",
@@ -1784,7 +1784,7 @@ def functionary_v1_v2_chat_handler(
     model: Optional[str] = None,
     logits_processor: Optional[llama.LogitsProcessorList] = None,
     grammar: Optional[llama.LlamaGrammar] = None,
-    **kwargs,  # type: ignore
+    **kwargs,
 ) -> Union[llama_types.ChatCompletion, Iterator[llama_types.ChatCompletionChunk]]:
     SYSTEM_MESSAGE = """A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. The assistant calls functions with appropriate input when necessary"""
 
@@ -1814,10 +1814,10 @@ def functionary_v1_v2_chat_handler(
     ) -> str:
         indent = "  " * indent_level
         if "$ref" in param:
-            # Reference to a shared definition
+
             ref_name = param["$ref"].split("/")[
                 -1
-            ]  # Extract the type name from the reference
+            ]
             return ref_name
         elif param.get("type") == "array":
             items = param.get("items", {})
@@ -1836,10 +1836,10 @@ def functionary_v1_v2_chat_handler(
             nested_schema += indent + "}"
             return nested_schema
         elif "enum" in param:
-            # Enum type
+
             return " | ".join([f'"{enum_value}"' for enum_value in param["enum"]])
         else:
-            # Simple type
+
             return param.get("type", "any")
 
     def generate_shared_definitions(shared_defs, indent_level: int) -> str:
@@ -1852,7 +1852,7 @@ def functionary_v1_v2_chat_handler(
                     def_properties, indent_level, shared_defs
                 )
             elif "enum" in def_properties:
-                # Enum type
+
                 shared_definitions += " | ".join(
                     [f'"{enum_value}"' for enum_value in def_properties["enum"]]
                 )
@@ -1865,7 +1865,7 @@ def functionary_v1_v2_chat_handler(
         )
         schema += f"namespace {namespace} {{\n\n"
 
-        # Generate shared definitions
+
         shared_definitions = {}
         for function in functions:
             parameters = function.get("parameters", {})
@@ -1936,10 +1936,10 @@ def functionary_v1_v2_chat_handler(
         )
 
         for message in messages:
-            # Function call responses
+
             if message["role"] == "function" and "name" in message:
                 message["name"] = f"functions.{message['name']}"
-            # Function call requests by assistant
+
             if "function_call" in message:
                 message["function_call"][
                     "name"
@@ -1972,7 +1972,7 @@ def functionary_v1_v2_chat_handler(
         messages, tokenizer, version, functions, tools, function_call
     )
 
-    # If no tools/functions are provided
+
     if function_call == "none" or functions is None or len(functions) == 0:
         if version == "v1":
             stop = END_ASSISTANT_TOKEN
@@ -2005,7 +2005,7 @@ def functionary_v1_v2_chat_handler(
             completion_or_completion_chunks["choices"][0]["text"] = (
                 completion_or_completion_chunks["choices"][0]["text"].lstrip()
             )
-        return _convert_completion_to_chat(completion_or_completion_chunks, stream=stream)  # type: ignore
+        return _convert_completion_to_chat(completion_or_completion_chunks, stream=stream)
 
     def get_grammar(function_call):
         function_body = None
@@ -2077,7 +2077,7 @@ def functionary_v1_v2_chat_handler(
 
         chunk_id, chunk_created = None, None
 
-        # If tool_choice/function_call is provided
+
         if isinstance(function_call, dict):
             prompt += f"{function_call['name']}\n{CONTENT_TOKEN}"
             grammar = get_grammar(function_call["name"])
@@ -2089,7 +2089,7 @@ def functionary_v1_v2_chat_handler(
             completion_text = ""
             first = True
             for chunk in completion:
-                # Yield the tool/function name first
+
                 if first:
                     if tools is not None:
                         func_call_dict = {
@@ -2169,7 +2169,7 @@ def functionary_v1_v2_chat_handler(
                             }
                         ],
                     )
-            # Yield tool_call/function_call stop message
+
             yield llama_types.CreateChatCompletionStreamResponse(
                 id="chat" + chunk["id"],
                 object="chat.completion.chunk",
@@ -2191,11 +2191,11 @@ def functionary_v1_v2_chat_handler(
                     }
                 ],
             )
-        # If "auto" or no tool_choice/function_call
+
         elif isinstance(function_call, str) and function_call == "auto":
             tool_index = 0
             while True:
-                # Generate function name first
+
                 grammar = None
                 stops = CONTENT_TOKEN
                 completion = create_completion(
@@ -2211,7 +2211,7 @@ def functionary_v1_v2_chat_handler(
                 function_name = completion_text.strip()
                 if function_name == "all":
                     prompt += "all\n<|content|>"
-                    # Yield the first empty message for content
+
                     yield llama_types.CreateChatCompletionStreamResponse(
                         id="chat" + chunk_id,
                         model=chunk["model"],
@@ -2253,7 +2253,7 @@ def functionary_v1_v2_chat_handler(
                         func_call_dict = {
                             "function_call": {"name": function_name, "arguments": ""}
                         }
-                    # Stream function name
+
                     yield llama_types.CreateChatCompletionStreamResponse(
                         id="chat" + chunk_id,
                         object="chat.completion.chunk",
@@ -2271,7 +2271,7 @@ def functionary_v1_v2_chat_handler(
                             }
                         ],
                     )
-                # Generate content
+
                 stops = [RECIPIENT_TOKEN, STOP_TOKEN]
                 completion = create_completion(
                     prompt=prompt, stop=stops, grammar=grammar
@@ -2337,7 +2337,7 @@ def functionary_v1_v2_chat_handler(
                                     }
                                 ],
                             )
-                    # Check whether the model wants to generate another turn
+
                     if (
                         "<|from|> assistant" in completion_text
                         or "<|from|>assistant" in completion_text
@@ -2354,7 +2354,7 @@ def functionary_v1_v2_chat_handler(
                             cleaned_completion_text = completion_text.strip()
                         prompt += f"{cleaned_completion_text}\n<|from|>assistant\n<|recipient|>"
                     else:
-                        # Yield stop message
+
                         yield llama_types.CreateChatCompletionStreamResponse(
                             id="chat" + chunk_id,
                             model=chunk["model"],
@@ -2371,7 +2371,7 @@ def functionary_v1_v2_chat_handler(
                         )
                         break
                 else:
-                    # Check whether the model wants to generate another turn
+
                     completion_text = ""
                     for chunk in completion:
                         completion_text += chunk["choices"][0]["text"]
@@ -2433,7 +2433,7 @@ def functionary_v1_v2_chat_handler(
                         prompt += "\n<|from|>assistant\n<|recipient|>"
                         tool_index += 1
                     else:
-                        # Yield tool_call/function_call stop message
+
                         yield llama_types.CreateChatCompletionStreamResponse(
                             id="chat" + chunk_id,
                             object="chat.completion.chunk",
@@ -2465,10 +2465,10 @@ def functionary_v1_v2_chat_handler(
         )
     else:
         if version == "v1":
-            # If no or "auto" tool_choice/function_call
+
             if isinstance(function_call, str) and function_call == "auto":
                 stops = ["\n", END_ASSISTANT_TOKEN]
-            # If tool_choice/function_call is provided
+
             elif isinstance(function_call, dict):
                 prompt += f"{START_FUNCTION_CALL_TOKEN}{function_call['name']}:\n"
                 stops = END_FUNCTION_CALL_TOKEN
@@ -2483,14 +2483,14 @@ def functionary_v1_v2_chat_handler(
             completion_text = completion["choices"][0]["text"]
             completion_tokens += completion["usage"]["completion_tokens"]
 
-            # If the generation does not involve a function call
+
             if (
                 START_FUNCTION_CALL_TOKEN not in prompt
                 and START_FUNCTION_CALL_TOKEN not in completion_text
             ):
                 completion["usage"]["completion_tokens"] = completion_tokens
-                return _convert_completion_to_chat(completion, stream=stream)  # type: ignore
-            # If the generation involves a function call in completion, generate the parameters
+                return _convert_completion_to_chat(completion, stream=stream)
+
             elif (
                 START_FUNCTION_CALL_TOKEN not in prompt
                 and START_FUNCTION_CALL_TOKEN in completion_text
@@ -2510,11 +2510,11 @@ def functionary_v1_v2_chat_handler(
                 )
                 completion_tokens += completion["usage"]["completion_tokens"]
                 function_bodies.append(completion["choices"][0]["text"].strip())
-            # If the prompt involves a function call, just append generated parameters to function_bodies
+
             else:
                 function_bodies.append(completion_text.strip())
         else:
-            # If tool_choice/function_call is provided
+
             if isinstance(function_call, dict):
                 prompt += f"{function_call['name']}\n{CONTENT_TOKEN}"
                 function_call = function_call["name"]
@@ -2527,10 +2527,10 @@ def functionary_v1_v2_chat_handler(
                 completion_text = completion["choices"][0]["text"]
                 completion_tokens += completion["usage"]["completion_tokens"]
                 function_bodies.append(completion_text.strip())
-            # If "auto" or no tool_choice/function_call
+
             elif isinstance(function_call, str) and function_call == "auto":
                 while True:
-                    # Generate function name first
+
                     grammar = None
                     stops = CONTENT_TOKEN
                     completion = create_completion(
@@ -2546,7 +2546,7 @@ def functionary_v1_v2_chat_handler(
                         prompt += f"{function_call}\n<|content|>"
                         function_calls.append(function_call)
                         grammar = get_grammar(function_call)
-                    # Generate content
+
                     stops = [RECIPIENT_TOKEN, STOP_TOKEN]
                     completion = create_completion(
                         prompt=prompt, stop=stops, grammar=grammar
@@ -2561,7 +2561,7 @@ def functionary_v1_v2_chat_handler(
                         else:
                             content += completion_text
                         content = content.lstrip()
-                        # Check whether the model wants to generate another turn
+
                         if (
                             "<|from|> assistant" in completion_text
                             or "<|from|>assistant" in completion_text
@@ -2581,7 +2581,7 @@ def functionary_v1_v2_chat_handler(
                             break
                     else:
                         function_bodies.append(completion_text.strip())
-                        # Check whether the model wants to generate another turn
+
                         prompt += completion_text.strip()
                         grammar = None
                         completion = create_completion(
@@ -2618,7 +2618,7 @@ def functionary_v1_v2_chat_handler(
                 }
             )
 
-        # TODO: support stream mode
+
         function_call_dict: Union[
             Dict[str, str],
             Dict[
@@ -2711,17 +2711,17 @@ class Llava15ChatHandler:
     def _init_mtmd_context(self, llama_model: llama.Llama):
         """Initialize mtmd context with the llama model."""
         if self.mtmd_ctx is not None:
-            return  # Already initialized
+            return
 
         with suppress_stdout_stderr(disable=self.verbose):
-            # Get default parameters
+
             ctx_params = self._mtmd_cpp.mtmd_context_params_default()
-            ctx_params.use_gpu = True # TODO: Make this configurable
+            ctx_params.use_gpu = True
             ctx_params.print_timings = self.verbose
             ctx_params.n_threads = llama_model.n_threads
-            ctx_params.verbosity = 2 if self.verbose else 0  # GGML_LOG_LEVEL_INFO = 2
+            ctx_params.verbosity = 2 if self.verbose else 0
 
-            # Initialize mtmd context
+
             self.mtmd_ctx = self._mtmd_cpp.mtmd_init_from_file(
                 self.clip_model_path.encode(),
                 llama_model.model,
@@ -2731,7 +2731,7 @@ class Llava15ChatHandler:
             if self.mtmd_ctx is None:
                 raise ValueError(f"Failed to load mtmd context from: {self.clip_model_path}")
 
-            # Check if vision is supported
+
             if not self._mtmd_cpp.mtmd_support_vision(self.mtmd_ctx):
                 raise ValueError("Vision is not supported by this model")
 
@@ -2752,16 +2752,16 @@ class Llava15ChatHandler:
             raise ValueError("mtmd context not initialized")
 
         with suppress_stdout_stderr(disable=self.verbose):
-            # Create bitmap from buffer using helper function
+
             bitmap = self._mtmd_cpp.mtmd_helper_bitmap_init_from_buf(
                 self.mtmd_ctx,
                 (ctypes.c_uint8 * len(image_bytes)).from_buffer(bytearray(image_bytes)),
                 len(image_bytes)
             )
-            
+
             if bitmap is None:
                 raise ValueError("Failed to create bitmap from image bytes")
-            
+
             return bitmap
 
     def __call__(
@@ -2798,12 +2798,12 @@ class Llava15ChatHandler:
         logit_bias: Optional[Dict[str, float]] = None,
         logprobs: Optional[bool] = None,
         top_logprobs: Optional[int] = None,
-        **kwargs,  # type: ignore
+        **kwargs,
     ) -> Union[
         llama_types.CreateChatCompletionResponse,
         Iterator[llama_types.CreateChatCompletionStreamResponse],
     ]:
-        # Initialize mtmd context
+
         self._init_mtmd_context(llama)
         assert self.mtmd_ctx is not None
 
@@ -2820,26 +2820,26 @@ class Llava15ChatHandler:
             trim_blocks=True,
             lstrip_blocks=True,
         ).from_string(self.CHAT_FORMAT)
-        
-        # Get the default media marker
+
+
         media_marker = self._mtmd_cpp.mtmd_default_marker().decode('utf-8')
-        
-        # Replace image URLs with media markers in the template
+
+
         text = template.render(
             messages=messages,
             add_generation_prompt=True,
             eos_token=llama.detokenize([llama.token_eos()]),
             bos_token=llama.detokenize([llama.token_bos()]),
         )
-        
-        # Replace image URLs in text with media markers
+
+
         for image_url in image_urls:
             text = text.replace(image_url, media_marker)
 
         if self.verbose:
             print(text, file=sys.stderr)
 
-        # Create bitmaps from images
+
         bitmaps = []
         bitmap_cleanup = []
         try:
@@ -2849,19 +2849,19 @@ class Llava15ChatHandler:
                 bitmaps.append(bitmap)
                 bitmap_cleanup.append(bitmap)
 
-            # Create input text structure
+
             input_text = self._mtmd_cpp.mtmd_input_text()
             input_text.text = text.encode('utf-8')
             input_text.add_special = True
             input_text.parse_special = True
 
-            # Create input chunks
+
             chunks = self._mtmd_cpp.mtmd_input_chunks_init()
             if chunks is None:
                 raise ValueError("Failed to create input chunks")
 
             try:
-                # Tokenize text and images together
+
                 bitmap_array = (self._mtmd_cpp.mtmd_bitmap_p_ctypes * len(bitmaps))(*bitmaps)
                 result = self._mtmd_cpp.mtmd_tokenize(
                     self.mtmd_ctx,
@@ -2874,47 +2874,47 @@ class Llava15ChatHandler:
                 if result != 0:
                     raise ValueError(f"Failed to tokenize input: error code {result}")
 
-                # Reset llama context
+
                 llama.reset()
                 llama._ctx.kv_cache_clear()
 
-                # Process each chunk
+
                 n_past = llama_cpp.llama_pos(0)
                 n_chunks = self._mtmd_cpp.mtmd_input_chunks_size(chunks)
-                
+
                 for i in range(n_chunks):
                     chunk = self._mtmd_cpp.mtmd_input_chunks_get(chunks, i)
                     if chunk is None:
                         continue
 
                     chunk_type = self._mtmd_cpp.mtmd_input_chunk_get_type(chunk)
-                    
+
                     if chunk_type == self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_TEXT:
-                        # Handle text chunk
+
                         n_tokens_out = ctypes.c_size_t()
                         tokens_ptr = self._mtmd_cpp.mtmd_input_chunk_get_tokens_text(
                             chunk, ctypes.byref(n_tokens_out)
                         )
-                        
+
                         if tokens_ptr and n_tokens_out.value > 0:
-                            # Convert ctypes array to Python list
+
                             tokens = [tokens_ptr[j] for j in range(n_tokens_out.value)]
-                            
+
                             if llama.n_tokens + len(tokens) > llama.n_ctx():
                                 raise ValueError(
                                     f"Prompt exceeds n_ctx: {llama.n_tokens + len(tokens)} > {llama.n_ctx()}"
                                 )
                             llama.eval(tokens)
-                    
+
                     elif chunk_type in [self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_IMAGE, self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_AUDIO]:
-                        # Handle image/audio chunk using helper
+
                         chunk_n_tokens = self._mtmd_cpp.mtmd_input_chunk_get_n_tokens(chunk)
-                        
+
                         if llama.n_tokens + chunk_n_tokens > llama.n_ctx():
                             raise ValueError(
                                 f"Prompt exceeds n_ctx: {llama.n_tokens + chunk_n_tokens} > {llama.n_ctx()}"
                             )
-                        
+
                         new_n_past = llama_cpp.llama_pos(0)
                         result = self._mtmd_cpp.mtmd_helper_eval_chunk_single(
                             self.mtmd_ctx,
@@ -2923,32 +2923,32 @@ class Llava15ChatHandler:
                             llama_cpp.llama_pos(llama.n_tokens),
                             llama_cpp.llama_seq_id(0),
                             llama.n_batch,
-                            False,  # logits_last
+                            False,
                             ctypes.byref(new_n_past)
                         )
-                        
+
                         if result != 0:
                             raise ValueError(f"Failed to evaluate chunk: error code {result}")
-                        
-                        # Update llama's token count
+
+
                         llama.n_tokens = new_n_past.value
 
-                # Get prompt tokens to avoid a cache miss
+
                 prompt = llama.input_ids[: llama.n_tokens].tolist()
 
             finally:
                 self._mtmd_cpp.mtmd_input_chunks_free(chunks)
 
         finally:
-            # Cleanup bitmaps
+
             for bitmap in bitmap_cleanup:
                 self._mtmd_cpp.mtmd_bitmap_free(bitmap)
 
-        # Handle response format and tools (same as before)
+
         if response_format is not None and response_format["type"] == "json_object":
             grammar = _grammar_for_response_format(response_format)
 
-        # Convert legacy functions to tools
+
         if functions is not None:
             tools = [
                 {
@@ -2958,7 +2958,7 @@ class Llava15ChatHandler:
                 for function in functions
             ]
 
-        # Convert legacy function_call to tool_choice
+
         if function_call is not None:
             if isinstance(function_call, str) and (
                 function_call == "none" or function_call == "auto"
@@ -2984,7 +2984,7 @@ class Llava15ChatHandler:
                 raise ValueError(f"Tool choice '{name}' not found in tools.")
             schema = tool["function"]["parameters"]
             try:
-                # create grammar from json schema
+
                 grammar = llama_grammar.LlamaGrammar.from_json_schema(
                     json.dumps(schema), verbose=llama.verbose
                 )
@@ -3019,7 +3019,7 @@ class Llava15ChatHandler:
             grammar=grammar,
             logit_bias=logit_bias,
         )
-        
+
         if tool is not None:
             tool_name = tool["function"]["name"]
             return _convert_completion_to_chat_function(
@@ -3029,7 +3029,7 @@ class Llava15ChatHandler:
 
     @staticmethod
     def _load_image(image_url: str) -> bytes:
-        # TODO: Add Pillow support for other image formats beyond (jpg, png)
+
         if image_url.startswith("data:"):
             import base64
             image_bytes = base64.b64decode(image_url.split(",")[1])
@@ -3072,7 +3072,7 @@ class Llava15ChatHandler:
         split_text: List[Tuple[Literal["text", "image_url"], str]] = []
         remaining = text
         while remaining:
-            # Find first image_url
+
             pos, i = find_first(remaining, image_urls)
             if pos is not None and i is not None:
                 if pos > 0:
@@ -3098,8 +3098,8 @@ class Llava15ChatHandler:
         from pathlib import Path
 
         try:
-            from huggingface_hub import hf_hub_download, HfFileSystem  # type: ignore
-            from huggingface_hub.utils import validate_repo_id  # type: ignore
+            from huggingface_hub import hf_hub_download, HfFileSystem
+            from huggingface_hub.utils import validate_repo_id
         except ImportError:
             raise ImportError(
                 "Llama.from_pretrained requires the huggingface-hub package. "
@@ -3112,16 +3112,16 @@ class Llava15ChatHandler:
 
         files = [
             file["name"] if isinstance(file, dict) else file
-            for file in hffs.ls(repo_id)  # type: ignore
+            for file in hffs.ls(repo_id)
         ]
 
-        # split each file into repo_id, subfolder, filename
+
         file_list: List[str] = []
         for file in files:
             rel_path = Path(file).relative_to(repo_id)
             file_list.append(str(rel_path))
 
-        matching_files = [file for file in file_list if fnmatch.fnmatch(file, filename)]  # type: ignore
+        matching_files = [file for file in file_list if fnmatch.fnmatch(file, filename)]
 
         if len(matching_files) == 0:
             raise ValueError(
@@ -3140,7 +3140,7 @@ class Llava15ChatHandler:
         subfolder = str(Path(matching_file).parent)
         filename = Path(matching_file).name
 
-        # download the file
+
         hf_hub_download(
             repo_id=repo_id,
             filename=filename,
@@ -3170,25 +3170,25 @@ class Llava15ChatHandler:
 
 
 class ObsidianChatHandler(Llava15ChatHandler):
-    # Prompt Format
-    # The model followed ChatML format. However, with ### as the seperator
 
-    # <|im_start|>user
-    # What is this sign about?\n<image>
-    # ###
-    # <|im_start|>assistant
-    # The sign is about bullying, and it is placed on a black background with a red background.
-    # ###
+
+
+
+
+
+
+
+
 
     CHAT_FORMAT = (
         "{% for message in messages %}"
-        # System message
+
         "{% if message.role == 'system' %}"
         "<|im_start|>system\n"
         "{{ message.content }}\n"
         "###\n"
         "{% endif %}"
-        # User message
+
         "{% if message.role == 'user' %}"
         "<|im_start|>user\n"
         "{% if message.content is string %}"
@@ -3211,14 +3211,14 @@ class ObsidianChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "###\n"
         "{% endif %}"
-        # Assistant message
+
         "{% if message.role == 'assistant' %}"
         "<|im_start|>assistant\n"
         "{{ message.content }}"
         "###\n"
         "{% endif %}"
         "{% endfor %}"
-        # Generation prompt
+
         "{% if add_generation_prompt %}"
         "<|im_start|>assistant\n"
         "{% endif %}"
@@ -3226,13 +3226,13 @@ class ObsidianChatHandler(Llava15ChatHandler):
 
 
 class MoondreamChatHandler(Llava15ChatHandler):
-    # Chat Format:
-    # f"<image>\n\n{chat_history}Question: {question}\n\nAnswer:"
+
+
     CHAT_FORMAT = (
         "{% for message in messages %}"
         "{% if message.role == 'user' %}"
         "{% if message.content is iterable %}"
-        # <image>
+
         "{% for content in message.content %}"
         "{% if content.type == 'image_url' %}"
         "{% if content.image_url is string %}"
@@ -3243,24 +3243,24 @@ class MoondreamChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "{% endif %}"
         "{% endfor %}"
-        # Question:
+
         "{% for content in message.content %}"
         "{% if content.type == 'text' %}"
         "Question: {{ content.text }}\n\n"
         "{% endif %}"
         "{% endfor %}"
         "{% endif %}"
-        # Question:
+
         "{% if message.content is string %}"
         "Question: {{ message.content }}\n\n"
         "{% endif %}"
         "{% endif %}"
-        # Answer:
+
         "{% if message.role == 'assistant' %}"
         "Answer:{{ message.content }}\n\n"
         "{% endif %}"
         "{% endfor %}"
-        # Generation prompt
+
         "{% if add_generation_prompt %}"
         "Answer:"
         "{% endif %}"
@@ -3270,8 +3270,8 @@ class MoondreamChatHandler(Llava15ChatHandler):
 class Llava16ChatHandler(Llava15ChatHandler):
     DEFAULT_SYSTEM_MESSAGE = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. "
 
-    # Example prompt
-    # "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image? ASSISTANT:"
+
+
 
     CHAT_FORMAT = (
         "{% for message in messages %}"
@@ -3280,7 +3280,7 @@ class Llava16ChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "{% if message.role == 'user' %}"
         "{% if message.content is iterable %}"
-        # <image>
+
         "{% for content in message.content %}"
         "{% if content.type == 'image_url' %}"
         "{% if content.image_url is string %}"
@@ -3291,24 +3291,24 @@ class Llava16ChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "{% endif %}"
         "{% endfor %}"
-        # Question:
+
         "{% for content in message.content %}"
         "{% if content.type == 'text' %}"
         "{{ content.text }}"
         "{% endif %}"
         "{% endfor %}"
         "{% endif %}"
-        # Question:
+
         "{% if message.content is string %}"
         "{{ message.content }}"
         "{% endif %}"
         "{% endif %}"
-        # Answer:
+
         "{% if message.role == 'assistant' %}"
         "{{ message.content }}"
         "{% endif %}"
         "{% endfor %}"
-        # Generation prompt
+
         "{% if add_generation_prompt %}"
         "Answer:"
         "{% endif %}"
@@ -3316,24 +3316,24 @@ class Llava16ChatHandler(Llava15ChatHandler):
 
 
 class NanoLlavaChatHandler(Llava15ChatHandler):
-    # Prompt Format
-    # The model follow the ChatML standard, however, without \n at the end of <|im_end|>:
 
-    # <|im_start|>system
-    # Answer the question<|im_end|><|im_start|>user
-    # <image>
-    # What is the picture about?<|im_end|><|im_start|>assistant
+
+
+
+
+
+
     DEFAULT_SYSTEM_MESSAGE = "Answer the question"
 
     CHAT_FORMAT = (
         "{% for message in messages %}"
-        # System message
+
         "{% if message.role == 'system' %}"
         "<|im_start|>system\n"
         "{{ message.content }}"
         "<|im_end|>"
         "{% endif %}"
-        # User message
+
         "{% if message.role == 'user' %}"
         "<|im_start|>user\n"
         "{% if message.content is string %}"
@@ -3356,14 +3356,14 @@ class NanoLlavaChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "<|im_end|>"
         "{% endif %}"
-        # Assistant message
+
         "{% if message.role == 'assistant' %}"
         "<|im_start|>assistant\n"
         "{{ message.content }}"
         "<|im_end|>"
         "{% endif %}"
         "{% endfor %}"
-        # Generation prompt
+
         "{% if add_generation_prompt %}"
         "<|im_start|>assistant\n"
         "{% endif %}"
@@ -3371,9 +3371,9 @@ class NanoLlavaChatHandler(Llava15ChatHandler):
 
 
 class Llama3VisionAlphaChatHandler(Llava15ChatHandler):
-    # question = "<image>" + q
 
-    # prompt = f"<|start_header_id|>user<|end_header_id|>\n\n{question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+
+
     DEFAULT_SYSTEM_MESSAGE = None
 
     CHAT_FORMAT = (
@@ -3382,7 +3382,7 @@ class Llama3VisionAlphaChatHandler(Llava15ChatHandler):
         "{% if message.role == 'user' %}"
         "user<|end_header_id|>\n\n"
         "{% if message.content is iterable %}"
-        # <image>
+
         "{% for content in message.content %}"
         "{% if content.type == 'image_url' %}"
         "{% if content.image_url is string %}"
@@ -3393,33 +3393,33 @@ class Llama3VisionAlphaChatHandler(Llava15ChatHandler):
         "{% endif %}"
         "{% endif %}"
         "{% endfor %}"
-        # Question:
+
         "{% for content in message.content %}"
         "{% if content.type == 'text' %}"
         "{{ content.text }}"
         "{% endif %}"
         "{% endfor %}"
         "{% endif %}"
-        # Question:
+
         "{% if message.content is string %}"
         "{{ message.content }}"
         "{% endif %}"
         "{% endif %}"
-        # Answer:
+
         "{% if message.role == 'assistant' %}"
         "assistant<|end_header_id|>\n\n"
         "{{ message.content }}"
         "{% endif %}"
         "<|eot_id|>"
         "{% endfor %}"
-        # Generation prompt
+
         "{% if add_generation_prompt %}"
         "<|start_header_id|>assistant<|end_header_id|>\n\n"
         "{% endif %}"
     )
 
 
-# alias
+
 Llama3VisionAlpha = Llama3VisionAlphaChatHandler
 
 
@@ -3465,8 +3465,8 @@ class Qwen25VLChatHandler(Llava15ChatHandler):
     DEFAULT_SYSTEM_MESSAGE = "You are a helpful assistant."
 
     CHAT_FORMAT = (
-        #"{% set image_count = namespace(value=0) %}"
-        #"{% set video_count = namespace(value=0) %}"
+
+
         "{% for message in messages %}"
         "{% if loop.first and message['role'] != 'system' %}"
         "<|im_start|>system\n"
@@ -3483,7 +3483,7 @@ class Qwen25VLChatHandler(Llava15ChatHandler):
         "{% else %}"
         "{{ content.image_url.url }}"
         "{% endif %}"
-        #"{% set image_count.value = image_count.value + 1 %}"
+
         "{% elif content['type'] == 'text' %}"
         "{{ content['text'] }}"
         "{% endif %}"
@@ -3497,7 +3497,7 @@ class Qwen25VLChatHandler(Llava15ChatHandler):
     def __call__(self, **kwargs):
         llama = kwargs['llama']
 
-        # Clear state for multiple runs
+
         llama.reset()
         llama._ctx.kv_cache_clear()
         llama.n_tokens = 0
@@ -3505,7 +3505,7 @@ class Qwen25VLChatHandler(Llava15ChatHandler):
         if hasattr(llama, 'input_ids'):
             llama.input_ids.fill(0)
 
-        # Clear any handler state
+
         if hasattr(self, '_last_image_embed'):
             self._last_image_embed = None
             self._last_image_hash = None
@@ -3515,7 +3515,7 @@ class Qwen25VLChatHandler(Llava15ChatHandler):
             image_count = len(self.get_image_urls(messages))
             print(f"Minimal - Cleared state, processing {image_count} images", file=sys.stderr)
 
-        # Use parent implementation
+
         return super().__call__(**kwargs)
 
 
@@ -3548,7 +3548,7 @@ def chatml_function_calling(
     grammar: Optional[llama.LlamaGrammar] = None,
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
-    **kwargs,  # type: ignore
+    **kwargs,
 ) -> Union[
     llama_types.CreateChatCompletionResponse,
     Iterator[llama_types.CreateChatCompletionStreamResponse],
@@ -3556,7 +3556,7 @@ def chatml_function_calling(
     function_calling_template = (
         "{% for message in messages %}"
         "<|im_start|>{{ message.role }}\n"
-        # System message
+
         "{% if message.role == 'system' %}"
         "{{ message.content }}"
         "{% if tool_calls %}"
@@ -3577,14 +3577,14 @@ def chatml_function_calling(
         "{% endif %}"
         "<|im_end|>\n"
         "{% endif %}"
-        # User message
+
         "{% if message.role == 'user' %}"
         "{{ message.content }}"
         "<|im_end|>\n"
         "{% endif %}"
-        # Assistant message
+
         "{% if message.role == 'assistant' %}"
-        ## Reglar message
+
         "{% if message.content and message.content | length > 0 %}"
         "{% if tool_calls %}"
         "message:\n"
@@ -3592,7 +3592,7 @@ def chatml_function_calling(
         "{{ message.content }}"
         "<|im_end|>\n"
         "{% endif %}"
-        ## Function calls
+
         "{% if 'tool_calls' in message %}"
         "{% for tool_call in message.tool_calls %}"
         "functions.{{ tool_call.function.name }}:\n"
@@ -3609,7 +3609,7 @@ def chatml_function_calling(
         undefined=jinja2.StrictUndefined,
     ).from_string(function_calling_template)
 
-    # Convert legacy functions to tools
+
     if functions is not None:
         tools = [
             {
@@ -3619,7 +3619,7 @@ def chatml_function_calling(
             for function in functions
         ]
 
-    # Convert legacy function_call to tool_choice
+
     if function_call is not None:
         if isinstance(function_call, str) and (
             function_call == "none" or function_call == "auto"
@@ -3639,7 +3639,7 @@ def chatml_function_calling(
         else stop + ["<|im_end|>"] if stop else ["<|im_end|>"]
     )
 
-    # Case 1: No tool choice by user
+
     if (
         tool_choice is None
         or (isinstance(tool_choice, str) and tool_choice == "none")
@@ -3682,7 +3682,7 @@ def chatml_function_calling(
             stream=stream,
         )
 
-    # Case 2: Tool choice by user
+
     if isinstance(tool_choice, dict):
         tool_name = tool_choice["function"]["name"]
         tool = next(
@@ -3735,7 +3735,7 @@ def chatml_function_calling(
             tool_name, completion_or_chunks, stream
         )
 
-    # Case 3: Automatic tool choice
+
     assert isinstance(tool_choice, str) and tool_choice == "auto"
     function_names = " | ".join(
         [f'''"functions.{tool['function']['name']}:"''' for tool in tools]
@@ -3777,7 +3777,7 @@ def chatml_function_calling(
             initial_gbnf_tool_grammar, verbose=llama.verbose
         ),
     )
-    completion: llama_types.CreateCompletionResponse = completion_or_chunks  # type: ignore
+    completion: llama_types.CreateCompletionResponse = completion_or_chunks
     text = completion["choices"][0]["text"]
     if "message" in text:
         return _convert_completion_to_chat(
@@ -3808,7 +3808,7 @@ def chatml_function_calling(
             stream=stream,
         )
 
-    # One or more function calls
+
     tool_name = text[len("functions.") :]
     tool = next((tool for tool in tools if tool["function"]["name"] == tool_name), None)
     if not stream:
@@ -3888,7 +3888,7 @@ def chatml_function_calling(
                 (tool for tool in tools if tool["function"]["name"] == tool_name), None
             )
 
-        # Merge completions
+
         function_call_dict: Union[
             Dict[str, str],
             Dict[

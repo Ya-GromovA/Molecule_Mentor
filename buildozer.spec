@@ -1,1 +1,1 @@
-buildozer-lite.spec
+buildozer-full.spec

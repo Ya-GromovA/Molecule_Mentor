@@ -14,66 +14,11 @@ from kivy.uix.scrollview import ScrollView
 from kivymd.uix.label import MDLabel
 
 from .base_screen import BaseScreen
+from utils.text_sanitize import sanitize_text_for_kivy
 
 
 def sanitize_text(text: str) -> str:
-    """Убирает нечитаемые символы и Markdown из текста."""
-    if not text:
-        return ""
-
-    # убираем куски LaTeX
-    text = text.replace("\\[", "")
-    text = text.replace("\\]", "")
-    text = text.replace("\\(", "")
-    text = text.replace("\\)", "")
-    text = text.replace("\\rightarrow", "->")
-    text = text.replace("\\leftarrow", "<-")
-    text = text.replace("\\leftrightarrow", "<->")
-    text = text.replace("\\rightleftharpoons", "<->")
-    text = text.replace("\\leftrightharpoons", "<->")
-    text = re.sub(r"\\text\{([^}]*)\}", r"\1", text)
-    text = re.sub(r"\^\{([^}]*)\}", r"^\1", text)
-    text = re.sub(r"_\{([^}]*)\}", r"_\1", text)
-    text = text.replace("\\", "")
-    
-    # заменяем греческие буквы
-    text = text.replace("σ", "сигма")
-    text = text.replace("π", "пи")
-    text = text.replace("α", "альфа")
-    text = text.replace("β", "бета")
-    text = text.replace("γ", "гамма")
-    text = text.replace("δ", "дельта")
-    
-    # заменяем спецсимволы
-    text = text.replace("→", "->")
-    text = text.replace("←", "<-")
-    text = text.replace("↔", "<->")
-    text = text.replace("≡", "=")
-    text = text.replace("≠", "!=")
-    text = text.replace("≤", "<=")
-    text = text.replace("≥", ">=")
-    text = text.replace("±", "+/-")
-    text = text.replace("°", " градусов")
-    text = text.replace("−", "-")
-    text = text.replace("–", "-")
-    text = text.replace("—", " - ")
-    text = text.replace("…", "...")
-    text = text.replace("«", "\"")
-    text = text.replace("»", "\"")
-    text = text.replace("'", "'")
-    text = text.replace("'", "'")
-    text = text.replace(""", "\"")
-    text = text.replace(""", "\"")
-    
-    # убираем Markdown разметку
-    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold** -> bold
-    text = re.sub(r'\*([^*]+)\*', r'\1', text)       # *italic* -> italic
-    text = re.sub(r'__([^_]+)__', r'\1', text)       # __bold__ -> bold
-    text = re.sub(r'_([^_]+)_', r'\1', text)         # _italic_ -> italic
-    text = re.sub(r'`([^`]+)`', r'\1', text)         # `code` -> code
-    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)  # # headers
-    
-    return text
+    return sanitize_text_for_kivy(text)
 
 
 class TheoryCard(BoxLayout):
@@ -95,13 +40,7 @@ class TheoryCard(BoxLayout):
 
 
 class TheoryScreen(BaseScreen):
-    """
-    Экран отображения теории (блоков контента) для выбранной темы.
-    
-    nav_state:
-      - topic_id: int
-      - topic_title: str
-    """
+    """Теория по выбранной теме."""
 
     def on_pre_enter(self, *args):
         super().on_pre_enter(*args)
@@ -134,7 +73,7 @@ class TheoryScreen(BaseScreen):
 
         self.clear_widgets()
 
-        # фон
+
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
         bg_rgba = getattr(app, "mm_bg", (0.12, 0.15, 0.25, 1))
         with root.canvas.before:
@@ -142,7 +81,7 @@ class TheoryScreen(BaseScreen):
             self._bg_rect = Rectangle(pos=root.pos, size=root.size)
         root.bind(pos=self._update_bg, size=self._update_bg)
 
-        # заголовок
+
         self.title = str(topic_title)
         app.set_top_title(self.title)
 
@@ -208,7 +147,7 @@ class TheoryScreen(BaseScreen):
                         )
                     )
             else:
-                # текст по умолчанию
+
                 clean_text = sanitize_text(str(b.content or "").strip())
                 lbl = MDLabel(
                     text=clean_text,

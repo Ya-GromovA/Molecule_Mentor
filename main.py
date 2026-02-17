@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-# ============================================================================
-# РАННЕЕ ЛОГИРОВАНИЕ - ДО ЛЮБЫХ ИМПОРТОВ
-# Пишем лог сразу при старте Python, чтобы поймать любые ошибки импорта
-# ============================================================================
+
+
+
+
 import os
 import sys
 
@@ -22,7 +22,7 @@ def _early_log(msg: str) -> None:
     except Exception:
         pass
 
-# Сразу пишем что Python запустился
+
 _early_log(f"=== PYTHON STARTED ===")
 _early_log(f"Python version: {sys.version}")
 _early_log(f"ANDROID_PRIVATE: {os.environ.get('ANDROID_PRIVATE', 'NOT SET')}")
@@ -30,9 +30,9 @@ _early_log(f"ANDROID_ARGUMENT: {os.environ.get('ANDROID_ARGUMENT', 'NOT SET')}")
 _early_log(f"cwd: {os.getcwd()}")
 _early_log(f"__file__: {__file__}")
 
-# ============================================================================
-# Остальные импорты
-# ============================================================================
+
+
+
 import ctypes
 import traceback
 
@@ -51,12 +51,12 @@ def _find_system_native_libs() -> str:
     Возвращает путь к директории с библиотеками или пустую строку.
     """
     _early_log("_find_system_native_libs: searching...")
-    
-    # Возможные системные пути для нативных библиотек
-    # На Android библиотеки из jniLibs обычно в nativeLibraryDir
+
+
+
     potential_paths = []
-    
-    # Пробуем получить путь через ApplicationInfo (требует jnius)
+
+
     try:
         from jnius import autoclass
         PythonActivity = autoclass("org.kivy.android.PythonActivity")
@@ -69,20 +69,20 @@ def _find_system_native_libs() -> str:
                 _early_log(f"_find_system_native_libs: nativeLibraryDir={native_lib_dir}")
     except Exception as e:
         _early_log(f"_find_system_native_libs: failed to get nativeLibraryDir via jnius: {e}")
-    
-    # Fallback пути
+
+
     android_private = os.environ.get("ANDROID_PRIVATE", "")
     if android_private:
-        # /data/data/org.xxx.xxx/files/app -> /data/data/org.xxx.xxx
+
         data_dir = os.path.dirname(os.path.dirname(android_private))
         potential_paths.extend([
             os.path.join(data_dir, "lib"),
             os.path.join(data_dir, "lib", "arm64"),
             os.path.join(data_dir, "lib", "arm64-v8a"),
         ])
-        
-        # Пробуем найти в /data/app/.../ (где APK распакован)
-        # Формат: /data/app/~~<random>==/com.package.name-<random>==/lib/arm64
+
+
+
         try:
             data_app = "/data/app"
             if os.path.isdir(data_app):
@@ -97,14 +97,14 @@ def _find_system_native_libs() -> str:
                                 _early_log(f"_find_system_native_libs: found app dir candidates: {lib_arm64}, {lib_arm64_v8a}")
         except Exception as e:
             _early_log(f"_find_system_native_libs: /data/app scan failed: {e}")
-    
-    # Также проверяем LD_LIBRARY_PATH (p4a обычно устанавливает его)
+
+
     ld_path = os.environ.get("LD_LIBRARY_PATH", "")
     _early_log(f"_find_system_native_libs: LD_LIBRARY_PATH={ld_path}")
     if ld_path:
         potential_paths.extend(ld_path.split(":"))
-    
-    # Ищем libllama.so
+
+
     for path in potential_paths:
         if not path or not os.path.isdir(path):
             continue
@@ -113,7 +113,7 @@ def _find_system_native_libs() -> str:
         if os.path.exists(lib_path):
             _early_log(f"_find_system_native_libs: FOUND at {path}")
             return path
-    
+
     _early_log("_find_system_native_libs: NOT FOUND in system paths")
     return ""
 
@@ -126,52 +126,52 @@ def _extract_native_libs_android() -> str:
     Возвращает путь к директории с библиотеками.
     """
     _early_log("_extract_native_libs: starting...")
-    
+
     android_private = os.environ.get("ANDROID_PRIVATE", "")
     _early_log(f"_extract_native_libs: ANDROID_PRIVATE={android_private}")
-    
+
     if not android_private:
         _early_log("_extract_native_libs: ANDROID_PRIVATE not set, aborting")
         return ""
-    
-    # Исходная директория (в APK assets)
+
+
     project_dir = os.path.dirname(os.path.abspath(__file__))
     src_llama_dir = os.path.join(project_dir, "assets", "llama")
-    
-    # Целевая директория - родительская папка от ANDROID_PRIVATE
-    # ANDROID_PRIVATE = /data/data/.../files/app
-    # Нам нужно /data/data/.../files/native_libs (на уровень выше)
-    files_dir = os.path.dirname(android_private)  # /data/data/.../files
+
+
+
+
+    files_dir = os.path.dirname(android_private)
     dst_llama_dir = os.path.join(files_dir, "native_libs")
-    
+
     _early_log(f"_extract_native_libs: project_dir={project_dir}")
     _early_log(f"_extract_native_libs: src_llama_dir={src_llama_dir}")
     _early_log(f"_extract_native_libs: src_llama_dir exists={os.path.exists(src_llama_dir)}")
     _early_log(f"_extract_native_libs: files_dir={files_dir}")
     _early_log(f"_extract_native_libs: dst_llama_dir={dst_llama_dir}")
-    
-    # Листинг исходной директории
+
+
     if os.path.exists(src_llama_dir):
         try:
             src_files = os.listdir(src_llama_dir)
             _early_log(f"_extract_native_libs: src files: {src_files}")
         except Exception as e:
             _early_log(f"_extract_native_libs: failed to list src: {e}")
-    
+
     libs = ["libomp.so", "libggml-base.so", "libggml-cpu.so", "libggml.so", "libllama.so"]
-    
+
     try:
         os.makedirs(dst_llama_dir, exist_ok=True)
         _early_log(f"_extract_native_libs: created dst dir")
-        
+
         copied_count = 0
         for lib in libs:
             src_path = os.path.join(src_llama_dir, lib)
             dst_path = os.path.join(dst_llama_dir, lib)
-            
+
             _early_log(f"_extract_native_libs: checking {lib}: src_exists={os.path.exists(src_path)}, dst_exists={os.path.exists(dst_path)}")
-            
-            # Копируем только если файл не существует или размер отличается
+
+
             need_copy = False
             if not os.path.exists(dst_path):
                 need_copy = True
@@ -181,15 +181,15 @@ def _extract_native_libs_android() -> str:
                 if src_size != dst_size:
                     need_copy = True
                     _early_log(f"_extract_native_libs: {lib} size mismatch: src={src_size}, dst={dst_size}")
-            
+
             if need_copy and os.path.exists(src_path):
                 _early_log(f"_extract_native_libs: copying {lib} (binary mode)...")
-                # Читаем и пишем в бинарном режиме чтобы избежать проблем с encoding
+
                 with open(src_path, 'rb') as sf:
                     data = sf.read()
                 with open(dst_path, 'wb') as df:
                     df.write(data)
-                # Делаем исполняемым
+
                 os.chmod(dst_path, 0o755)
                 _early_log(f"_extract_native_libs: {lib} copied OK, size={os.path.getsize(dst_path)}")
                 copied_count += 1
@@ -197,8 +197,8 @@ def _extract_native_libs_android() -> str:
                 _early_log(f"_extract_native_libs: {lib} already exists, size={os.path.getsize(dst_path)}")
             else:
                 _early_log(f"_extract_native_libs: {lib} NOT FOUND at {src_path}")
-        
-        # Проверяем что libllama.so существует в dst
+
+
         final_lib_path = os.path.join(dst_llama_dir, "libllama.so")
         if os.path.exists(final_lib_path):
             _early_log(f"_extract_native_libs: done, copied {copied_count} files, libllama.so OK")
@@ -218,7 +218,7 @@ def _setup_android_llama() -> None:
         return
 
     _early_log("_setup_android_llama: starting...")
-    
+
     try:
         project_dir = os.path.dirname(os.path.abspath(__file__))
         third_party_dir = os.path.join(project_dir, "third_party")
@@ -226,24 +226,24 @@ def _setup_android_llama() -> None:
             sys.path.insert(0, third_party_dir)
         _early_log(f"_setup_android_llama: third_party_dir={third_party_dir}")
 
-        # Шаг 1: Пробуем найти библиотеки в системных директориях
-        # (добавленные через android.add_libs_arm64_v8a)
+
+
         llama_dir = _find_system_native_libs()
-        
-        # Шаг 2: Если не нашли в системных, пробуем извлечь из assets
+
+
         if not llama_dir:
             _early_log("_setup_android_llama: system libs not found, trying extraction from assets...")
             llama_dir = _extract_native_libs_android()
-        
-        # Проверяем, успешно ли найдены/извлечены
+
+
         if llama_dir:
             lib_path = os.path.join(llama_dir, "libllama.so")
             _early_log(f"_setup_android_llama: using libs from {llama_dir}")
             _early_log(f"_setup_android_llama: libllama.so exists={os.path.exists(lib_path)}")
-            
-            # Устанавливаем переменные окружения только если библиотека реально существует
+
+
             if os.path.exists(lib_path):
-                # llama_cpp читает LLAMA_CPP_LIB_PATH (директория), а не только LLAMA_CPP_LIB
+
                 os.environ["LLAMA_CPP_LIB_PATH"] = llama_dir
                 os.environ["LLAMA_CPP_LIB"] = lib_path
                 existing = os.environ.get("LD_LIBRARY_PATH", "")
@@ -253,8 +253,8 @@ def _setup_android_llama() -> None:
                 _early_log(f"_setup_android_llama: LLAMA_CPP_LIB={lib_path}")
                 _early_log(f"_setup_android_llama: LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}")
 
-                # Пробуем загрузить зависимости в правильном порядке
-                # ВАЖНО: libomp.so нужен для libggml-cpu.so (OpenMP)
+
+
                 all_deps_loaded = True
                 for dep in ("libomp.so", "libggml-base.so", "libggml-cpu.so", "libggml.so"):
                     dep_path = os.path.join(llama_dir, dep)
@@ -269,16 +269,16 @@ def _setup_android_llama() -> None:
                     else:
                         _early_log(f"_setup_android_llama: {dep} NOT FOUND at {dep_path}")
                         all_deps_loaded = False
-                
-                # Пробуем загрузить саму libllama.so после зависимостей
+
+
                 if all_deps_loaded:
                     try:
                         _early_log(f"_setup_android_llama: loading libllama.so from {lib_path}...")
                         _llama_lib = ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
                         _early_log(f"_setup_android_llama: libllama.so loaded OK!")
-                        # Сохраняем ссылку чтобы библиотека не выгрузилась
+
                         os.environ["_LLAMA_LIB_LOADED"] = "1"
-                        os.environ["_LLAMA_ALL_LOADED"] = "1"  # Все библиотеки загружены успешно
+                        os.environ["_LLAMA_ALL_LOADED"] = "1"
                     except Exception as e:
                         _early_log(f"_setup_android_llama: libllama.so FAILED: {e}")
                         os.environ["_LLAMA_LOAD_ERROR"] = str(e)[:200]
@@ -287,21 +287,22 @@ def _setup_android_llama() -> None:
             else:
                 _early_log(f"_setup_android_llama: libllama.so NOT FOUND in {llama_dir}")
         else:
-            # Ни системные, ни извлечённые библиотеки не найдены
+
             _early_log(f"_setup_android_llama: WARNING - no native libs found, offline AI will not work")
             _early_log(f"_setup_android_llama: NOT setting LLAMA_CPP_LIB to avoid misleading errors")
-        
+
         _early_log("_setup_android_llama: done")
     except Exception as e:
         _early_log(f"_setup_android_llama: EXCEPTION: {e}")
         _early_log(traceback.format_exc())
 
 
-# Вызываем setup в try/except чтобы не крашнуться
-try:
-    _setup_android_llama()
-except Exception as e:
-    _early_log(f"_setup_android_llama call FAILED: {e}")
+
+if os.environ.get("MM_EAGER_LLAMA_SETUP", "0") == "1":
+    try:
+        _setup_android_llama()
+    except Exception as e:
+        _early_log(f"_setup_android_llama call FAILED: {e}")
 
 
 def _startup_log_path() -> str:
@@ -339,25 +340,25 @@ def _excepthook(exc_type, exc, tb) -> None:
 
 sys.excepthook = _excepthook
 
-# Настройки для Android - без них приложение вылетает
+
 _early_log("Setting up environment variables...")
 if _is_android():
-    # Выключаем аппаратное ускорение - с ним на некоторых телефонах краш
+
     os.environ.setdefault('SDL_RENDER_DRIVER', 'software')
     os.environ.setdefault('KIVY_GL_BACKEND', 'gl')
     os.environ.setdefault('SDL_RENDER_BATCHING', '0')
     os.environ.setdefault('SDL_HINT_RENDER_DRIVER', 'software')
     _early_log("Android env vars set")
 else:
-    # На компе всё проще
+
     os.environ.setdefault('KIVY_GL_BACKEND', 'gl')
     _early_log("Desktop env vars set")
 
-# Настройки Kivy
+
 _early_log("Importing kivy.config...")
 try:
     from kivy.config import Config
-    Config.set('graphics', 'multisamples', '0')  # без этого на андроиде глючит
+    Config.set('graphics', 'multisamples', '0')
     if _is_android():
         Config.set('kivy', 'pause_on_minimize', '0')
     _early_log("kivy.config OK")
@@ -405,7 +406,7 @@ except Exception as e:
     _early_log(traceback.format_exc())
     raise
 
-# Наши экраны
+
 _early_log("Importing screens...")
 try:
     from screens.home_screen import HomeScreen
@@ -419,9 +420,10 @@ try:
     from screens.molecules_screen import MoleculesScreen
     from screens.molecule_viewer_screen import MoleculeViewerScreen
     from screens.molecule_editor_screen import MoleculeEditorScreen
-    from screens.reaction_viewer_screen import ReactionViewerScreen
     from screens.reactions_screen import ReactionsScreen
+    from screens.reaction_viewer_screen import ReactionViewerScreen
     from screens.reaction_editor_screen import ReactionEditorScreen
+    from screens.favorites_screen import FavoritesScreen
     from screens.ai_assistant_screen import AIAssistantScreen
     from screens.model_download_screen import ModelDownloadScreen
     _early_log("screens OK")
@@ -434,7 +436,7 @@ _early_log("Importing utils...")
 try:
     from utils.ai_engine import AIEngine
     from utils.course_repo import CourseRepo
-    from utils.model_bootstrap import ensure_gguf_ready, needs_download
+    from utils.model_bootstrap import ensure_gguf_ready, needs_download, get_available_model_path
     from theme import THEME
     _early_log("utils OK")
 except Exception as e:
@@ -445,7 +447,7 @@ except Exception as e:
 _early_log("All imports completed successfully!")
 
 
-# Пути к файлам проекта
+
 PROJECT_DIR = Path(__file__).resolve().parent
 _early_log(f"PROJECT_DIR: {PROJECT_DIR}")
 
@@ -453,13 +455,13 @@ KV_PATH = PROJECT_DIR / "kv" / "main.kv"
 COURSES_DB = PROJECT_DIR / "data" / "courses" / "courses.db"
 HF_TOKEN = PROJECT_DIR / "data" / "secrets" / "hf_token.txt"
 
-# Модель для оффлайн ИИ (файл разбит на части в assets/models/)
-OFFLINE_MODEL_NAME = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+
+OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 
 MOLECULES_DIR = PROJECT_DIR / "assets" / "molecules"
 REACTIONS_DIR = PROJECT_DIR / "assets" / "reactions"
 
-# Проверяем критические файлы сразу
+
 _early_log(f"KV_PATH: {KV_PATH}, exists: {KV_PATH.exists()}")
 _early_log(f"COURSES_DB: {COURSES_DB}, exists: {COURSES_DB.exists()}")
 _early_log(f"MOLECULES_DIR: {MOLECULES_DIR}, exists: {MOLECULES_DIR.exists()}")
@@ -469,7 +471,7 @@ _early_log(f"REACTIONS_DIR: {REACTIONS_DIR}, exists: {REACTIONS_DIR.exists()}")
 def _db_conn(db_path: str) -> sqlite3.Connection:
     """Подключаемся к базе данных"""
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row  # чтобы можно было обращаться по имени столбца
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
@@ -479,7 +481,7 @@ def ensure_mm_tables(db_path: str) -> None:
     with _db_conn(db_path) as conn:
         cur = conn.cursor()
 
-        # Таблица метаданных приложения (для хранения версии и флагов)
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mm_app_meta (
             key TEXT PRIMARY KEY,
@@ -487,7 +489,7 @@ def ensure_mm_tables(db_path: str) -> None:
         );
         """)
 
-        # Таблица с тестами
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mm_quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -502,7 +504,7 @@ def ensure_mm_tables(db_path: str) -> None:
         );
         """)
 
-        # Вопросы к тестам
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mm_quiz_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,7 +518,7 @@ def ensure_mm_tables(db_path: str) -> None:
         );
         """)
 
-        # Попытки прохождения тестов
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mm_quiz_attempts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -530,7 +532,7 @@ def ensure_mm_tables(db_path: str) -> None:
         );
         """)
 
-        # Прогресс по курсам
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mm_course_progress (
             course_id INTEGER PRIMARY KEY,
@@ -541,21 +543,24 @@ def ensure_mm_tables(db_path: str) -> None:
             FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
         """)
-        
-        # Создаем запись-заглушку для викторин по категориям (quiz_id=0)
-        # Это нужно для foreign key constraint в mm_quiz_attempts
-        # Используем course_id из существующего курса (или 1 по умолчанию)
+
+
+
+
+
+
         cur.execute("""
-        INSERT OR IGNORE INTO mm_quizzes (id, course_id, title) 
-        SELECT 0, COALESCE((SELECT id FROM courses LIMIT 1), 1), 'Викторины по категориям'
-        WHERE NOT EXISTS (SELECT 1 FROM mm_quizzes WHERE id = 0)
+        INSERT OR IGNORE INTO mm_quizzes (id, course_id, title)
+        SELECT 0, (SELECT id FROM courses LIMIT 1), 'Викторины по категориям'
+        WHERE EXISTS (SELECT 1 FROM courses)
+          AND NOT EXISTS (SELECT 1 FROM mm_quizzes WHERE id = 0)
         """)
 
         conn.commit()
 
 
-# Версия приложения для сброса данных при обновлении
-APP_DATA_VERSION = "2"  # Увеличить при необходимости сбросить историю
+
+APP_DATA_VERSION = "3"
 
 
 def reset_quiz_history_if_needed(db_path: str) -> bool:
@@ -565,33 +570,33 @@ def reset_quiz_history_if_needed(db_path: str) -> bool:
     """
     with _db_conn(db_path) as conn:
         cur = conn.cursor()
-        
-        # Проверяем текущую версию данных
+
+
         row = cur.execute(
             "SELECT value FROM mm_app_meta WHERE key='data_version'"
         ).fetchone()
-        
+
         current_version = row["value"] if row else None
-        
+
         if current_version == APP_DATA_VERSION:
-            return False  # Версия актуальная, сброс не нужен
-        
-        # Сбрасываем историю тестов и прогресс
+            return False
+
+
         _early_log(f"Resetting quiz history (version {current_version} -> {APP_DATA_VERSION})")
-        
+
         cur.execute("DELETE FROM mm_quiz_attempts")
         cur.execute("""
-            UPDATE mm_course_progress 
-            SET best_percent=0, last_percent=0, attempts_count=0, 
+            UPDATE mm_course_progress
+            SET best_percent=0, last_percent=0, attempts_count=0,
                 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
         """)
-        
-        # Сохраняем новую версию
+
+
         cur.execute(
             "INSERT OR REPLACE INTO mm_app_meta (key, value) VALUES ('data_version', ?)",
             (APP_DATA_VERSION,)
         )
-        
+
         conn.commit()
         _early_log("Quiz history reset complete")
         return True
@@ -600,65 +605,65 @@ def reset_quiz_history_if_needed(db_path: str) -> bool:
 def seed_section_quizzes_if_needed(db_path: str) -> bool:
     """Создаёт тесты для разделов курса, если их ещё нет."""
     import json
-    
+
     with _db_conn(db_path) as conn:
         cur = conn.cursor()
-        
-        # Проверяем, есть ли уже тесты для разделов
+
+
         existing = cur.execute(
             "SELECT COUNT(*) FROM mm_quizzes WHERE section_id IS NOT NULL"
         ).fetchone()[0]
-        
+
         if existing > 0:
-            return False  # Тесты уже есть
-        
+            return False
+
         _early_log("Creating section quizzes...")
-        
+
         try:
             from data.quiz_questions import get_questions_by_section
         except ImportError:
             _early_log("Cannot import quiz_questions - skipping section quizzes")
             return False
-        
-        # Получаем разделы курса
+
+
         sections = cur.execute(
             "SELECT id, course_id, title FROM course_sections ORDER BY id"
         ).fetchall()
-        
+
         created_count = 0
         for s in sections:
             section_id = int(s["id"])
             course_id = int(s["course_id"])
             title = str(s["title"])
-            
-            # Получаем вопросы для раздела
+
+
             questions = get_questions_by_section(section_id)
-            
+
             if len(questions) < 5:
                 _early_log(f"Skipping section {section_id} ({title}) - only {len(questions)} questions")
                 continue
-            
-            # Создаем тест для раздела
+
+
             quiz_title = f"Тест: {title}"
             cur.execute(
                 "INSERT INTO mm_quizzes (course_id, section_id, title) VALUES (?, ?, ?)",
                 (course_id, section_id, quiz_title)
             )
             quiz_id = cur.lastrowid
-            
-            # Добавляем вопросы
+
+
             for i, q in enumerate(questions):
                 cur.execute(
-                    """INSERT INTO mm_quiz_questions 
-                       (quiz_id, order_index, q, options_json, correct_index, explanation) 
+                    """INSERT INTO mm_quiz_questions
+                       (quiz_id, order_index, q, options_json, correct_index, explanation)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (quiz_id, i, q['q'], json.dumps(q['options'], ensure_ascii=False), 
+                    (quiz_id, i, q['q'], json.dumps(q['options'], ensure_ascii=False),
                      q['correct'], q.get('explanation', ''))
                 )
-            
+
             created_count += 1
             _early_log(f"Created quiz '{quiz_title}' with {len(questions)} questions")
-        
+
         conn.commit()
         _early_log(f"Created {created_count} section quizzes")
         return created_count > 0
@@ -670,13 +675,13 @@ def seed_quizzes_if_needed(db_path: str) -> bool:
         cur = conn.cursor()
         q_count = int(cur.execute("select count(*) from mm_quiz_questions").fetchone()[0])
         if q_count > 0:
-            return False  # вопросы уже есть
+            return False
 
         courses = cur.execute("select id, title from courses order by id").fetchall()
         if not courses:
             return False
 
-        # Базовые вопросы по химии для теста
+
         base_questions = [
             (
                 "Какая связь образуется при боковом перекрытии p-орбиталей?",
@@ -728,7 +733,7 @@ def seed_quizzes_if_needed(db_path: str) -> bool:
             ),
         ]
 
-        # Добавляем тест для каждого курса
+
         for course in courses:
             course_id = int(course["id"])
             title = str(course["title"])
@@ -753,22 +758,24 @@ def seed_quizzes_if_needed(db_path: str) -> bool:
 
 class MoleculeMentorApp(MDApp):
     """Главный класс приложения"""
-    
+
     top_title = StringProperty("Molecule Mentor")
     back_visible = BooleanProperty(False)
     ai_status = StringProperty("N/A")
+    ai_status_phase = StringProperty("checking")
+    ai_status_display = StringProperty("Идет проверка...")
     nav_state = DictProperty({})
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        # Пути к ресурсам
+
         self.project_dir = str(PROJECT_DIR)
         self.courses_db = str(COURSES_DB)
         self.molecules_dir = str(MOLECULES_DIR)
         self.reactions_dir = str(REACTIONS_DIR)
 
-        # Цвета из темы (используются в kv файлах)
+
         self.mm_bg = THEME.bg
         self.mm_surface = THEME.surface
         self.mm_surface2 = THEME.surface2
@@ -778,7 +785,7 @@ class MoleculeMentorApp(MDApp):
         self.mm_text = THEME.text
         self.mm_text2 = THEME.text2
 
-        # Цвета для карточек молекул
+
         self.mm_molecules_card_bg = self.mm_surface2
         self.mm_molecules_card_border = (1, 1, 1, 0.16)
         self.mm_molecules_card_pressed_delta = 0.08
@@ -786,14 +793,14 @@ class MoleculeMentorApp(MDApp):
         self.mm_molecules_list_spacing = 4
         self.mm_molecules_list_bottom_padding = 8
 
-        # Пул потоков для фоновых задач (чтобы UI не тормозил)
+
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mm")
         self._ai_engine: Optional[AIEngine] = None
         self._ai_dialog: Optional[MDDialog] = None
         self._download_prompt_dialog: Optional[MDDialog] = None
         self._ai_lock = threading.RLock()
 
-        # Проверяем базу данных
+
         _early_log(f"MoleculeMentorApp.__init__: checking COURSES_DB={COURSES_DB}")
         if not COURSES_DB.exists():
             _early_log(f"COURSES_DB NOT FOUND!")
@@ -801,23 +808,23 @@ class MoleculeMentorApp(MDApp):
 
         _early_log("MoleculeMentorApp.__init__: ensuring tables...")
         ensure_mm_tables(self.courses_db)
-        
+
         _early_log("MoleculeMentorApp.__init__: checking for quiz history reset...")
         reset_quiz_history_if_needed(self.courses_db)
-        
+
         _early_log("MoleculeMentorApp.__init__: seeding section quizzes if needed...")
         seed_section_quizzes_if_needed(self.courses_db)
-        
+
         _early_log("MoleculeMentorApp.__init__: creating CourseRepo...")
         self.course_repo = CourseRepo(self.courses_db)
-        self._nav_stack: list[str] = ["home"]  # стек навигации для кнопки "назад"
+        self._nav_stack: list[str] = ["home"]
         _early_log("MoleculeMentorApp.__init__: done")
 
     def build(self):
         """Строим интерфейс приложения"""
         _early_log("MoleculeMentorApp.build: starting...")
         self.theme_cls.material_style = "M3"
-        
+
         _early_log(f"MoleculeMentorApp.build: checking KV_PATH={KV_PATH}")
         if not KV_PATH.exists():
             _early_log(f"KV_PATH NOT FOUND!")
@@ -838,7 +845,7 @@ class MoleculeMentorApp(MDApp):
         sm = cast(ScreenManager, root_ids.sm)
         _early_log("MoleculeMentorApp.build: ScreenManager OK")
 
-        # Добавляем все экраны
+
         _early_log("MoleculeMentorApp.build: adding screens...")
         try:
             sm.add_widget(HomeScreen(name="home"))
@@ -849,6 +856,7 @@ class MoleculeMentorApp(MDApp):
             sm.add_widget(QuizSelectionScreen(name="quiz_selection"))
             sm.add_widget(TestsSelectionScreen(name="tests_selection"))
             sm.add_widget(StatsScreen(name="stats"))
+            sm.add_widget(FavoritesScreen(name="favorites"))
             sm.add_widget(MoleculesScreen(name="molecules"))
             sm.add_widget(MoleculeViewerScreen(name="molecule_viewer"))
             sm.add_widget(MoleculeEditorScreen(name="molecule_editor"))
@@ -869,40 +877,48 @@ class MoleculeMentorApp(MDApp):
 
     def on_start(self):
         """Запускается при старте приложения"""
-        # Создаём папку для данных пользователя
+
+        # Не делаем eager-инициализацию llama на старте, чтобы избежать
+        # нативных падений на части устройств. Инициализация произойдет
+        # лениво при первом обращении к оффлайн-ИИ.
+
         try:
             Path(self.user_data_dir).mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print("[WARN] не удалось создать папку данных:", e)
 
-        # Путь к модели ИИ
-        offline_target = str(Path(self.user_data_dir).resolve() / "models" / OFFLINE_MODEL_NAME)
+
+        preferred_model_path = get_available_model_path(OFFLINE_MODEL_NAME)
+        if preferred_model_path is not None:
+            offline_target = str(preferred_model_path)
+        else:
+            offline_target = str(Path(self.user_data_dir).resolve() / "models" / OFFLINE_MODEL_NAME)
 
         self._ai_engine = AIEngine(
             hf_token_path=str(HF_TOKEN),
             offline_model_path=offline_target,
         )
 
-        # Проверяем, нужно ли скачать модель (для Lite версии без модели)
+
         need_dl = needs_download(OFFLINE_MODEL_NAME)
         print(f"[STARTUP] нужна загрузка модели: {need_dl}")
         if need_dl:
             print("[STARTUP] показываем окно загрузки")
             self._show_download_prompt_on_start()
         else:
-            print("[STARTUP] готовим модель в фоне")
-            self._prepare_offline_model_async()
+            print("[STARTUP] модель уже доступна")
+            self._refresh_ai_status_async()
 
-        # Обновляем статус ИИ каждые 15 секунд
+
         Clock.schedule_interval(lambda *_: self._refresh_ai_status_async(), 15.0)
         self._refresh_ai_status_async()
 
-        # Заполняем тесты в фоне
+
         self._executor.submit(self._seed_quizzes_background)
 
         self.set_top_title("Главная")
         self.set_back_visible(False)
-    
+
     def _show_download_prompt_on_start(self) -> None:
         """Показывает окно с предложением скачать оффлайн-модель."""
         def show_prompt(_dt):
@@ -983,9 +999,10 @@ class MoleculeMentorApp(MDApp):
                 import traceback
                 print(f"[OFFLINE] ошибка: {e}")
                 traceback.print_exc()
-                
+                err_text = str(e)
+
                 def notify_err(_dt):
-                    self.toast(f"Оффлайн модель недоступна: {e}")
+                    self.toast(f"Оффлайн модель недоступна: {err_text}")
                     self._refresh_ai_status_async()
 
                 Clock.schedule_once(notify_err, 0)
@@ -1032,7 +1049,7 @@ class MoleculeMentorApp(MDApp):
         """Переключаемся на другой экран"""
         sm = self._sm()
 
-        # Если уже на этом экране
+
         if sm.current == name:
             if force:
                 try:
@@ -1048,7 +1065,7 @@ class MoleculeMentorApp(MDApp):
         sm.transition = SlideTransition(direction="left")
         sm.current = name
 
-        # Запоминаем в стек для кнопки "назад"
+
         if push and (not self._nav_stack or self._nav_stack[-1] != name):
             self._nav_stack.append(name)
 
@@ -1059,11 +1076,11 @@ class MoleculeMentorApp(MDApp):
         if len(self._nav_stack) <= 1:
             self.open_home()
             return
-        
+
         current = self._nav_stack.pop()
         prev = self._nav_stack[-1]
-        
-        # Чистим состояние навигации
+
+
         st = dict(self.nav_state or {})
         if current == "theory":
             st.pop("topic_id", None)
@@ -1072,23 +1089,23 @@ class MoleculeMentorApp(MDApp):
             st.pop("section_id", None)
             st.pop("section_title", None)
         self.nav_state = st
-        
+
         sm = self._sm()
         sm.transition = SlideTransition(direction="right")
         sm.current = prev
-        
-        # Обновляем экран
+
+
         try:
             scr = sm.get_screen(prev)
             if hasattr(scr, "on_pre_enter"):
                 scr.dispatch("on_pre_enter")
         except Exception:
             pass
-        
+
         self.set_back_visible(prev != "home")
 
-    # ====== Методы навигации ======
-    
+
+
     def open_home(self) -> None:
         """На главную"""
         self.nav_state = {}
@@ -1125,13 +1142,13 @@ class MoleculeMentorApp(MDApp):
         self.nav_state = {}
         self.set_top_title("Реакции")
         self._set_screen("reactions")
-        
+
     def open_reaction_viewer(self, reaction_id: str, title: str) -> None:
         """Открыть просмотр реакции"""
         self.nav_state = {"reaction_id": str(reaction_id), "title": str(title)}
         self.set_top_title(title)
         self._set_screen("reaction_viewer")
-    
+
     def open_reaction_editor(self) -> None:
         """Открыть редактор реакций"""
         self.nav_state = {}
@@ -1142,12 +1159,12 @@ class MoleculeMentorApp(MDApp):
         """Открыть чат с ИИ"""
         self.set_top_title("ИИ-помощник")
         self._set_screen("ai_assistant")
-    
+
     def open_model_download(self) -> None:
         """Открыть экран загрузки модели"""
         self.set_top_title("Загрузка модели")
         self._set_screen("model_download")
-        
+
     def open_course(self, course_id: int, course_title: str) -> None:
         """Открыть курс (список разделов)"""
         st = dict(self.nav_state or {})
@@ -1217,13 +1234,26 @@ class MoleculeMentorApp(MDApp):
         self.set_top_title("Статистика")
         self._set_screen("stats")
 
-    # ====== ИИ ======
-    
+    def open_favorites(self) -> None:
+        """Открыть избранное"""
+        self.nav_state = {}
+        self.set_top_title("Избранное")
+        self._set_screen("favorites")
+
+
+
     def _refresh_ai_status_async(self) -> None:
         """Обновляем статус ИИ"""
         if not self._ai_engine:
             self.ai_status = "N/A"
+            self.ai_status_phase = "na"
+            self.ai_status_display = "НЕТ"
             return
+
+
+        if self.ai_status in ("N/A", ""):
+            self.ai_status_phase = "checking"
+            self.ai_status_display = "..."
 
         fut = self._executor.submit(self._ai_engine.diagnose)
 
@@ -1234,10 +1264,41 @@ class MoleculeMentorApp(MDApp):
                 if mode == "N/A" and not getattr(d, "online_reachable", True):
                     mode = "OFFLINE"
                 self.ai_status = mode
+
+                if mode == "ONLINE":
+                    self.ai_status_phase = "online"
+                    self.ai_status_display = "ОНЛ"
+                elif mode == "OFFLINE":
+                    self.ai_status_phase = "offline"
+                    self.ai_status_display = "ОФФ"
+                else:
+                    self.ai_status_phase = "na"
+                    self.ai_status_display = "НЕТ"
             except Exception:
                 self.ai_status = "N/A"
+                self.ai_status_phase = "na"
+                self.ai_status_display = "НЕТ"
 
         Clock.schedule_once(on_done, 0)
+
+    def on_ai_status(self, _inst, value: str) -> None:
+        """Лёгкий пульс индикатора статуса ИИ."""
+        try:
+
+            from kivy.animation import Animation
+
+            root = self.root
+            if not root:
+                return
+            ico = getattr(root, "ids", {}).get("ai_info_icon")
+            if not ico:
+                return
+
+            Animation.cancel_all(ico, "opacity")
+            seq = Animation(opacity=0.40, d=0.10, t="out_quad") + Animation(opacity=1.0, d=0.40, t="out_cubic")
+            seq.start(ico)
+        except Exception:
+            return
 
     def show_ai_info(self) -> None:
         """Показываем информацию о состоянии ИИ"""
@@ -1252,41 +1313,54 @@ class MoleculeMentorApp(MDApp):
                 d = fut.result()
                 data = asdict(d)
 
-                lines = [
-                    f"Статус: {data.get('mode')}",
-                    f"Онлайн-доступен: {'Да' if data.get('online_reachable') else 'Нет'}",
-                    f"HF токен: {'OK' if data.get('hf_token_exists') else 'Нет'}",
-                    f"Оффлайн-модель готова: {'Да' if data.get('offline_model_exists') else 'Нет'}",
-                    f"llama_cpp: {'OK' if data.get('llama_import_ok') else 'Нет'}",
-                ]
-                
-                # Показываем путь к библиотеке если установлен
-                llama_lib_path = os.environ.get("LLAMA_CPP_LIB", "")
-                llama_lib_dir = os.environ.get("LLAMA_CPP_LIB_PATH", "")
-                if llama_lib_path:
-                    lib_exists = os.path.exists(llama_lib_path)
-                    lines.append(f"Путь lib: ...{llama_lib_path[-50:] if len(llama_lib_path) > 50 else llama_lib_path}")
-                    lines.append(f"lib существует: {'Да' if lib_exists else 'Нет'}")
-                if llama_lib_dir:
-                    lines.append(f"LIB_PATH: ...{llama_lib_dir[-40:] if len(llama_lib_dir) > 40 else llama_lib_dir}")
-                    # Проверяем наличие всех зависимостей
-                    deps = ["libomp.so", "libggml-base.so", "libggml-cpu.so", "libggml.so", "libllama.so"]
-                    found = [d for d in deps if os.path.exists(os.path.join(llama_lib_dir, d))]
-                    missing = [d for d in deps if not os.path.exists(os.path.join(llama_lib_dir, d))]
-                    lines.append(f"Найдено: {len(found)}/5 libs")
-                    if missing:
-                        lines.append(f"Отсутствуют: {', '.join(missing)}")
-                
-                # Показываем статус загрузки
-                if os.environ.get("_LLAMA_ALL_LOADED") == "1":
-                    lines.append("Загрузка libs: OK")
-                elif os.environ.get("_LLAMA_LOAD_ERROR"):
-                    lines.append(f"Ошибка загрузки: {os.environ.get('_LLAMA_LOAD_ERROR', '')[:80]}")
-                
-                if data.get("online_last_error"):
-                    lines.append(f"Ошибка online: {str(data.get('online_last_error'))[:120]}")
-                if data.get("llama_last_error"):
-                    lines.append(f"Ошибка offline: {str(data.get('llama_last_error'))[:120]}")
+
+                mode = data.get('mode', 'N/A')
+                online_ok = data.get('online_reachable', False)
+                offline_ok = data.get('offline_model_exists', False) and data.get('llama_import_ok', False)
+
+
+                if mode == "ONLINE":
+                    status_text = "Онлайн (HuggingFace)"
+                elif mode == "OFFLINE":
+                    status_text = "Оффлайн (локальная модель)"
+                else:
+                    status_text = "Не определён"
+
+                lines = [f"Режим: {status_text}"]
+
+
+                if online_ok:
+                    lines.append("Интернет: доступен")
+                else:
+                    lines.append("Интернет: недоступен")
+
+
+                if data.get('offline_model_exists'):
+                    if data.get('llama_import_ok'):
+                        lines.append("Оффлайн-модель: готова к работе")
+                    else:
+                        lines.append("Оффлайн-модель: скачана, но не загружена")
+                else:
+                    lines.append("Оффлайн-модель: не скачана")
+
+
+                if not online_ok and not offline_ok:
+                    lines.append("")
+                    lines.append("Подключите интернет или скачайте оффлайн-модель")
+                elif not online_ok and offline_ok:
+                    lines.append("")
+                    lines.append("ИИ работает в оффлайн-режиме")
+
+
+                if data.get("llama_last_error") and not data.get('llama_import_ok'):
+                    err = str(data.get('llama_last_error', ''))
+
+                    if "undefined symbol" in err:
+                        lines.append("")
+                        lines.append("Ошибка: несовместимая версия библиотеки")
+                    elif "not found" in err.lower():
+                        lines.append("")
+                        lines.append("Ошибка: библиотека не найдена")
 
                 msg = "\n".join(lines)
             except Exception as e:

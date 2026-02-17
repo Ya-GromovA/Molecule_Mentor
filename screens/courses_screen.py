@@ -4,6 +4,7 @@ import sqlite3
 
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics import Line
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
@@ -14,6 +15,7 @@ from kivymd.uix.progressindicator import MDLinearProgressIndicator
 from kivymd.uix.scrollview import MDScrollView
 
 from .base_screen import BaseScreen
+from utils.text_sanitize import sanitize_text_for_kivy
 
 
 class ClickableCard(ButtonBehavior, BoxLayout):
@@ -60,14 +62,14 @@ class ProgressCard(BoxLayout):
         self.padding = [dp(16), dp(14), dp(16), dp(14)]
         self.spacing = dp(8)
 
-        # фон карточки
+
         with self.canvas.before:
             Color(0.08, 0.10, 0.16, 1)
             self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(16)])
 
         self.bind(pos=self._update_bg, size=self._update_bg)
 
-        # заголовок
+
         self._title = MDLabel(
             text="Мой прогресс",
             halign="left",
@@ -80,7 +82,7 @@ class ProgressCard(BoxLayout):
         )
         self.add_widget(self._title)
 
-        # строка с лучшим результатом
+
         self._best_label = MDLabel(
             text="Лучший результат: -",
             halign="left",
@@ -92,7 +94,7 @@ class ProgressCard(BoxLayout):
         )
         self.add_widget(self._best_label)
 
-        # прогресс-бар
+
         self._progress_bar = MDLinearProgressIndicator(
             value=0,
             size_hint_y=None,
@@ -100,7 +102,7 @@ class ProgressCard(BoxLayout):
         )
         self.add_widget(self._progress_bar)
 
-        # строка со статистикой
+
         self._stats_label = MDLabel(
             text="",
             halign="left",
@@ -125,15 +127,15 @@ class ProgressCard(BoxLayout):
         else:
             self._best_label.text = f"Лучший результат: {best_percent:.0f}%"
             self._progress_bar.value = best_percent / 100.0
-            
-            # цвет прогресс-бара по результату
+
+
             if best_percent >= 80:
-                self._progress_bar.indicator_color = (0.2, 0.8, 0.4, 1)  # зелёный
+                self._progress_bar.indicator_color = (0.2, 0.8, 0.4, 1)
             elif best_percent >= 50:
-                self._progress_bar.indicator_color = (0.9, 0.7, 0.2, 1)  # жёлтый
+                self._progress_bar.indicator_color = (0.9, 0.7, 0.2, 1)
             else:
-                self._progress_bar.indicator_color = (0.9, 0.3, 0.3, 1)  # красный
-            
+                self._progress_bar.indicator_color = (0.9, 0.3, 0.3, 1)
+
             attempts_word = self._pluralize(attempts, "попытка", "попытки", "попыток")
             self._stats_label.text = f"Последний: {last_percent:.0f}% | {attempts} {attempts_word}"
 
@@ -160,36 +162,51 @@ class CourseCard(ButtonBehavior, BoxLayout):
         self.height = dp(64)
         self.padding = [dp(16), dp(12), dp(16), dp(12)]
         self.spacing = dp(12)
-        
+
         self._on_click = on_click
         self._bg_color = bg_color
         self._pressed_color = (
-            min(1.0, bg_color[0] + 0.08),
-            min(1.0, bg_color[1] + 0.08),
-            min(1.0, bg_color[2] + 0.08),
+            min(1.0, bg_color[0] + 0.16),
+            min(1.0, bg_color[1] + 0.16),
+            min(1.0, bg_color[2] + 0.16),
             bg_color[3],
         )
+        self._border_rgba = (1, 1, 1, 0.18)
+        self._border_pressed_rgba = (1, 1, 1, 0.38)
 
-        # фон карточки
+
         with self.canvas.before:
             self._color_instr = Color(*bg_color)
             self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(16)])
 
+        with self.canvas.after:
+            self._border_color = Color(*self._border_rgba)
+            self._border_line = Line(
+                rounded_rectangle=[self.x, self.y, self.width, self.height, dp(16)],
+                width=dp(1.2),
+            )
+
         self.bind(pos=self._update_bg, size=self._update_bg)
 
-        # название курса
+
         self._title_label = MDLabel(
-            text=title,
+            text=sanitize_text_for_kivy(title),
             halign="left",
             valign="center",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             bold=True,
             font_size=dp(16),
+            shorten=True,
+            shorten_from="right",
+            max_lines=1,
+            size_hint_x=1,
         )
+        self._title_label.text_size = (dp(10), None)
+        self._title_label.bind(size=lambda inst, *_: setattr(inst, "text_size", (max(dp(10), inst.width), None)))
         self.add_widget(self._title_label)
-        
-        # стрелка (>)
+
+
         arrow_label = MDLabel(
             text=">",
             halign="right",
@@ -206,17 +223,24 @@ class CourseCard(ButtonBehavior, BoxLayout):
     def _update_bg(self, *_):
         self._bg_rect.pos = self.pos
         self._bg_rect.size = self.size
+        self._border_line.rounded_rectangle = [self.x, self.y, self.width, self.height, dp(16)]
+        self._title_label.text_size = (max(dp(10), self._title_label.width), None)
 
     def on_press(self):
         self._color_instr.rgba = self._pressed_color
+        self._border_color.rgba = self._border_pressed_rgba
+        self._border_line.width = dp(1.6)
 
     def on_release(self):
         self._color_instr.rgba = self._bg_color
+        self._border_color.rgba = self._border_rgba
+        self._border_line.width = dp(1.2)
         if self._on_click:
             self._on_click()
 
 
 class CoursesScreen(BaseScreen):
+    """Экран курсов."""
     def on_pre_enter(self, *args):
         super().on_pre_enter(*args)
         Clock.schedule_once(lambda *_: self._load(), 0)
@@ -230,7 +254,7 @@ class CoursesScreen(BaseScreen):
             cur = conn.cursor()
 
             row = cur.execute("""
-                SELECT 
+                SELECT
                     MAX(best_percent) as best,
                     (SELECT last_percent FROM mm_course_progress ORDER BY updated_at DESC LIMIT 1) as last,
                     SUM(attempts_count) as attempts
@@ -243,7 +267,7 @@ class CoursesScreen(BaseScreen):
                 return float(row["best"] or 0), float(row["last"] or 0), int(row["attempts"] or 0)
         except Exception as e:
             print(f"[CoursesScreen] Error loading progress: {e}")
-        
+
         return 0.0, 0.0, 0
 
     def _load(self):
@@ -254,8 +278,8 @@ class CoursesScreen(BaseScreen):
         app.set_top_title("Курсы")
 
         self.clear_widgets()
-        
-        # фон
+
+
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
         with root.canvas.before:
             Color(*app.mm_bg)
@@ -263,19 +287,19 @@ class CoursesScreen(BaseScreen):
         root.bind(pos=lambda *_: setattr(self._root_bg, 'pos', root.pos),
                   size=lambda *_: setattr(self._root_bg, 'size', root.size))
 
-        # карточка прогресса тестирования
+
         best, last, attempts = self._get_total_progress()
         progress_card = ProgressCard()
         progress_card.set_progress(best, last, attempts)
         root.add_widget(progress_card)
 
-        # кнопки "Пройти тест" и "Викторины"
+
         btn_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(12), padding=[0, dp(4), 0, dp(4)])
-        
+
         test_btn = MDButton(style="filled", on_release=lambda *_: app.open_tests_selection())
         test_btn.add_widget(MDButtonText(text="Пройти тест"))
         btn_row.add_widget(test_btn)
-        
+
         quiz_btn = MDButton(
             style="filled",
             md_bg_color=(0.85, 0.55, 0.2, 1),
@@ -283,10 +307,10 @@ class CoursesScreen(BaseScreen):
         )
         quiz_btn.add_widget(MDButtonText(text="Викторины"))
         btn_row.add_widget(quiz_btn)
-        
+
         root.add_widget(btn_row)
 
-        # заголовок списка курсов
+
         courses_header = MDLabel(
             text="Доступные курсы",
             halign="left",
@@ -300,7 +324,7 @@ class CoursesScreen(BaseScreen):
         )
         root.add_widget(courses_header)
 
-        # список курсов
+
         courses = repo.list_courses()
         if not courses:
             root.add_widget(
@@ -321,12 +345,12 @@ class CoursesScreen(BaseScreen):
         for c in courses:
             course_id = int(c.id)
             course_title = str(c.title)
-            
-            # простая карточка курса
+
+
             card = CourseCard(
                 title=course_title,
                 on_click=lambda cid=course_id, ct=course_title: app.open_course(cid, ct),
-                bg_color=app.mm_surface,
+                bg_color=(0.18, 0.18, 0.34, 1),
             )
             col.add_widget(card)
 

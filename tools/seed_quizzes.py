@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import json
@@ -70,7 +70,7 @@ def main() -> int:
     try:
         cur = conn.cursor()
 
-        # ensure tables exist
+
         cur.execute("select name from sqlite_master where type='table' and name='mm_quizzes'")
         if not cur.fetchone():
             print("[ERROR] mm_quizzes not found. Run migrate_quizzes_and_progress.py first.")

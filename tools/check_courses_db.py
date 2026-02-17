@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/tools/check_courses_db.py
+
 from __future__ import annotations
 
 import sqlite3
