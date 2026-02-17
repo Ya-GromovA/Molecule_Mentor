@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/ai_engine.py
+
 from __future__ import annotations
 
 import json
@@ -25,14 +25,14 @@ class Diagnose:
     offline_model_exists: bool
     llama_import_ok: bool
     llama_last_error: str
-    mode: str  # "ONLINE" | "OFFLINE" | "N/A"
+    mode: str
     last_switch_ts: float
 
 
 class AIEngine:
-    # движок для работы с ИИ
-    # может работать через интернет (HuggingFace) или локально (llama_cpp)
-    # метод ask() блокирующий - вызывать только из фонового потока!
+
+
+
 
     def __init__(self, hf_token_path: str, offline_model_path: str):
         self.hf_token_path = hf_token_path
@@ -49,18 +49,18 @@ class AIEngine:
         self._online_err = ""
         self._online_ok = False
 
-        # кеш для загруженных фактов (чтобы не качать каждый раз)
+
         self._retrieval_cache: Dict[str, Tuple[float, str, list[str]]] = {}
-        self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))  # 24 часа
+        self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))
 
         self._stop = False
         self._health_thread = threading.Thread(target=self._health_loop, daemon=True)
         self._health_thread.start()
 
-    # -------- внешние методы --------
+
     def stop(self) -> None:
         self._stop = True
-        # ждём пока фоновый поток завершится
+
         if self._health_thread and self._health_thread.is_alive():
             self._health_thread.join(timeout=2.0)
 
@@ -69,8 +69,8 @@ class AIEngine:
             return self._mode
 
     def set_offline_model_path(self, path: str) -> None:
-        # устанавливаем путь к оффлайн модели
-        # сбрасываем кеш чтобы подгрузилась с нового места
+
+
         with self._lock:
             self.offline_model_path = path
             self._llama = None
@@ -80,7 +80,6 @@ class AIEngine:
         token = self._read_token()
         hf_exists = bool(token)
         offline_exists = os.path.exists(self.offline_model_path) and os.path.getsize(self.offline_model_path) > 0
-        llama_ok = self._try_import_llama()
 
         with self._lock:
             mode = self._mode
@@ -88,6 +87,11 @@ class AIEngine:
             online_err = self._online_err
             llama_err = self._llama_err
             last_switch = self._last_switch
+            llama_loaded = self._llama is not None
+
+        # Не триггерим импорт llama_cpp в диагностике/статусе,
+        # чтобы не ловить нативные падения на некоторых устройствах.
+        llama_ok = bool(llama_loaded) or (offline_exists and not bool(llama_err))
 
         return Diagnose(
             hf_token_exists=hf_exists,
@@ -101,16 +105,16 @@ class AIEngine:
             last_switch_ts=last_switch,
         )
 
-    # -------- контроль языка --------
+
     _RE_LATIN_ANY = re.compile(r"[A-Za-z]")
     _RE_FORMULA_TOKEN = re.compile(r"^(?:[A-Z][a-z]?\d*){1,12}[+-]?$")
 
-    # разрешаем органику типа R-COOH, R'-OH
+
     _RE_ORGANIC_TOKEN = re.compile(r"^(?:R|R'|R')(?:[A-Za-z0-9''+\-()]{0,32})$")
 
-    # заменяем английские слова на русские (расширенный словарь для оффлайн модели)
+
     FORCED_RU_TERMS = {
-        # Общие слова
+
         "and/or": "и/или",
         "and": "и",
         "or": "или",
@@ -201,8 +205,8 @@ class AIEngine:
         "any": "любой",
         "no": "нет",
         "yes": "да",
-        
-        # Химические термины
+
+
         "dissolveable": "растворимый",
         "dissolvable": "растворимый",
         "miscible": "смешивающийся",
@@ -271,8 +275,8 @@ class AIEngine:
         "neutral": "нейтральный",
         "polar": "полярный",
         "nonpolar": "неполярный",
-        
-        # Биология/общее
+
+
         "living": "живых",
         "organisms": "организмов",
         "organism": "организм",
@@ -293,8 +297,8 @@ class AIEngine:
         "animals": "животные",
         "food": "пища",
         "health": "здоровье",
-        
-        # Применение
+
+
         "used": "используется",
         "use": "использование",
         "uses": "использует",
@@ -430,8 +434,8 @@ class AIEngine:
         "exactly": "точно",
         "approximately": "приблизительно",
     }
-    
-    # фиксы опечаток которые модель часто делает
+
+
     TYPO_FIXES = {
         "спиры": "спирты",
         "спиров": "спиртов",
@@ -443,43 +447,63 @@ class AIEngine:
         "кислоы": "кислоты",
     }
 
-    # -------- промпты для модели --------
+
     def _system_prompt_ru(self, is_offline: bool = False) -> str:
         base = (
             "Ты — эксперт по химии для школьников 7–11 классов.\n"
             "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.\n"
             "Запрещено использовать английские слова, кроме химических формул.\n"
-            
+
             "КРИТИЧЕСКИ ПРАВИЛА:\n"
             "1) Пиши только ВЕРНЫЕ факты из школьного курса химии.\n"
             "2) Если не уверен в ответе — напиши «Я не знаю точного ответа».\n"
             "3) Никогда не выдумывай данные и не давай неверных определений.\n"
+            "3.1) Не подставляй другие вещества и чужие формулы, если их нет в вопросе.\n"
+            "3.2) Если написал «Я не знаю точного ответа» — остановись и больше ничего не добавляй.\n"
             "4) Латинские буквы ТОЛЬКО в формулах: H2O, CO2, NaOH, CH3OH, C2H5OH, R-COOH.\n"
             "5) Символы: →, <->, +, -, =, цифры — разрешены в формулах.\n"
             "6) Не используй спецсимволы Unicode (↑, ↓, ∞, ± и т.д.) — замени их текстом.\n"
-            
+
             "ВАЖНЫЕ ХИМИЧЕСКИЕ ФАКТЫ:\n"
             "- Спирты — это производные углеводородов, в которых один атом водорода замещён гидроксильной группой -OH.\n"
             "- Спирты НЕ ЯВЛЯЮТСЯ производными карбоновых кислот.\n"
             "- Общая формула спиртов: CnH2n+1OH или R-OH.\n"
-            
+
             "СТРУКТУРА ОТВЕТА:\n"
             "1) Определение (что это).\n"
             "2) Формула (если есть).\n"
             "3) Примеры (3-6 штук).\n"
             "4) Свойства и применение.\n"
-            
+
             "ВАЖНО: ответ должен быть чистым русским текстом без ошибок и странных символов.\n"
         )
-        
+
         if is_offline:
             base += (
-                "\nВАЖНО: отвечай КРАТКО, 3-5 предложений максимум.\n"
+                "\nВАЖНО: отвечай достаточно информативно, 4-8 предложений максимум.\n"
                 "Используй ТОЛЬКО русские слова. Никаких английских слов!\n"
                 "Пиши простым языком для школьника.\n"
             )
-        
+
         return base
+
+    @staticmethod
+    def _trim_if_uncertain(answer: str) -> str:
+        a = (answer or "").strip()
+        low = a.lower()
+        if not a:
+            return a
+        if "я не знаю" in low or "не знаю точного" in low or "не уверен" in low:
+            return "Я не знаю точного ответа."
+        return a
+
+    @staticmethod
+    def _guard_unrelated(question: str, answer: str) -> str:
+        q = (question or "").lower()
+        a = (answer or "").lower()
+        if "кофеин" in a and "кофеин" not in q:
+            return "Я не знаю точного ответа."
+        return answer
 
     def _verifier_prompt_ru(self) -> str:
         return (
@@ -492,9 +516,9 @@ class AIEngine:
             "Русский язык обязателен, латиница — только в формулах (и R-обозначениях органики).\n"
         )
 
-    # -------- поиск фактов в интернете --------
+
     def _is_chem_query(self, text: str) -> bool:
-        # проверяем похож ли вопрос на химический
+
         t = (text or "").strip().lower()
         if not t:
             return False
@@ -511,8 +535,8 @@ class AIEngine:
         return any(x in t for x in triggers)
 
     def _extract_term_ru(self, text: str) -> str:
-        # вытаскиваем термин для поиска
-        # например "перечисли спирты" -> "спирты"
+
+
         t = (text or "").strip().lower()
         t = re.sub(r"[^\w\s\-ёЁа-яА-Я]", " ", t)
         t = re.sub(r"\s{2,}", " ", t).strip()
@@ -520,7 +544,7 @@ class AIEngine:
         if not t:
             return ""
 
-        # убираем всякие "расскажи", "что такое" и т.д.
+
         stop_prefixes = (
             "объясни", "расскажи", "что такое", "что значит", "дай определение", "определи",
             "перечисли", "назови", "приведи", "покажи", "как", "почему", "зачем",
@@ -530,7 +554,7 @@ class AIEngine:
             if t.startswith(sp + " "):
                 t = t[len(sp):].strip()
 
-        # убираем мусорные слова
+
         stop_words = {
             "пожалуйста", "мне", "про", "о", "об", "это", "такое", "значит",
             "на", "в", "и", "или", "что", "как", "какие", "какой", "в", "для",
@@ -540,7 +564,7 @@ class AIEngine:
         if not parts:
             return ""
 
-        # берём последние 1-2 слова - там обычно и термин
+
         tail = parts[-2:] if len(parts) > 1 else parts[-1:]
         return " ".join(tail).strip()
 
@@ -554,7 +578,7 @@ class AIEngine:
             return None
 
     def _fetch_wikipedia_ru_summary(self, term: str, timeout_sec: float = 3.0) -> Tuple[str, str]:
-        # качаем краткое описание из википедии
+
         if not term:
             return "", ""
         url = f"https://ru.wikipedia.org/api/rest_v1/page/summary/{quote(term)}"
@@ -566,7 +590,7 @@ class AIEngine:
         return title, extract
 
     def _fetch_pubchem_basic(self, term: str, timeout_sec: float = 3.0) -> Dict[str, str]:
-        # качаем формулу и IUPAC название из PubChem
+
         if not term:
             return {"formula": "", "iupac": ""}
 
@@ -589,7 +613,7 @@ class AIEngine:
         }
 
     def _build_retrieved_context_ru(self, term: str) -> Tuple[str, list[str]]:
-        # собираем факты из разных источников
+
         if not term:
             return "", []
 
@@ -623,7 +647,7 @@ class AIEngine:
         self._retrieval_cache[key] = (now, ctx, sources)
         return ctx, sources
 
-    # -------- нормализация текста для Kivy --------
+
     _SUBSCRIPT_MAP = str.maketrans({
         "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
         "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
@@ -635,12 +659,12 @@ class AIEngine:
     })
 
     def _normalize_for_kivy_font(self, text: str) -> str:
-        # заменяем всякие юникодные символы на обычные
-        # потому что в Kivy они показываются квадратиками
+
+
         if not text:
             return ""
 
-        # заменяем стрелки и математические символы
+
         replacements = {
             "⇌": "<->",
             "↔": "<->",
@@ -668,15 +692,15 @@ class AIEngine:
         for a, b in replacements.items():
             text = text.replace(a, b)
 
-        # индексы в формулах -> обычные цифры (H₂O -> H2O), степени тоже
+
         text = text.translate(self._SUBSCRIPT_MAP)
         text = text.translate(self._SUPERSCRIPT_MAP)
 
         return text
 
-    # -------- обработка ответов --------
+
     def _needs_russian_rewrite(self, answer: str) -> bool:
-        # проверяем что нет английских слов
+
         if not answer:
             return False
 
@@ -691,15 +715,15 @@ class AIEngine:
             if not self._RE_LATIN_ANY.search(tok):
                 continue
 
-            # разрешаем формулы типа NaOH, H2O
+
             if self._RE_FORMULA_TOKEN.fullmatch(tok):
                 continue
 
-            # разрешаем органику типа R-COOH
+
             if self._RE_ORGANIC_TOKEN.fullmatch(tok):
                 continue
 
-            # разрешаем отдельные обозначения элементов
+
             if tok in {
                 "pH", "Na", "Cl", "Fe", "Cu", "Zn", "Ag", "Au", "Hg",
                 "Pb", "Sn", "Al", "Si", "Ca", "K", "Li", "Mg",
@@ -715,7 +739,7 @@ class AIEngine:
         if not text:
             return text
 
-        # сначала and/or как единый токен
+
         text = re.sub(r"\band/or\b", "и/или", text, flags=re.IGNORECASE)
 
         for en, ru in self.FORCED_RU_TERMS.items():
@@ -723,33 +747,33 @@ class AIEngine:
                 continue
             text = re.sub(rf"\b{re.escape(en)}\b", ru, text, flags=re.IGNORECASE)
         return text
-    
+
     def _translate_english_words(self, text: str) -> str:
         """Заменяет английские слова на русские в ответе оффлайн модели."""
         if not text:
             return text
-        
-        # Применяем словарь замен
+
+
         text = self._force_ru_terms(text)
-        
-        # Убираем двойные пробелы которые могли появиться
+
+
         text = re.sub(r'\s{2,}', ' ', text)
-        
-        # Убираем пробелы перед знаками препинания
+
+
         text = re.sub(r'\s+([.,;:!?)])', r'\1', text)
-        
-        # Исправляем опечатки
+
+
         text = self._fix_typos(text)
-        
+
         return text.strip()
-    
+
     def _fix_typos(self, text: str) -> str:
-        # исправляем опечатки типа "спиры"
+
         if not text:
             return text
-        
+
         for typo, fix in self.TYPO_FIXES.items():
-            # регистронезависимая замена с сохранением первой буквы
+
             pattern = re.compile(re.escape(typo), re.IGNORECASE)
             def replace_match(m):
                 matched = m.group(0)
@@ -757,12 +781,12 @@ class AIEngine:
                     return fix.capitalize()
                 return fix
             text = pattern.sub(replace_match, text)
-        
+
         return text
 
     def _fix_cyrillic_confusables(self, text: str) -> str:
-        # если внутри слова попалась латиница, меняем на русские буквы
-        # например Vензол -> Бензол
+
+
         if not text:
             return ""
 
@@ -795,7 +819,7 @@ class AIEngine:
             text,
         )
 
-        # чистим совсем странные символы
+
         allowed_chars = r"\x00-\x7F\u0400-\u04FF\s.,;:!?(){}\"'/\\|+<>=\-\[\]_"
         text = re.sub(r"[^" + allowed_chars + r"]", "", text)
 
@@ -816,7 +840,7 @@ class AIEngine:
                 cleaned.append(ch)
                 continue
 
-            # убираем технические символы
+
             if code < 32 or (0xD800 <= code <= 0xDFFF):
                 continue
 
@@ -824,7 +848,7 @@ class AIEngine:
 
         text = "".join(cleaned)
 
-        # убираем невидимые символы
+
         text = text.translate(
             {
                 0x200B: None,
@@ -837,26 +861,26 @@ class AIEngine:
             }
         )
 
-        # убираем лишние пробелы
+
         text = re.sub(r"[ \t]{2,}", " ", text).strip()
-        
-        # выкидываем пустые строки
+
+
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         text = "\n".join(lines)
-        
+
         return text
-    
+
     def _is_answer_quality_good(self, text: str) -> bool:
-        # проверяем что ответ не пустой и без мусора
+
         if not text or len(text.strip()) < 20:
             return False
-        
-        # если в слове смешаны кириллица и латиница - плохо
+
+
         mixed_script_pattern = re.compile(r'[А-Яа-яЁё][A-Za-z]{2,}|[A-Za-z]{2,}[А-Яа-яЁё]')
         if mixed_script_pattern.search(text):
             return False
-        
-        # ловим грубые ошибки по химии
+
+
         wrong_statements = [
             r'спирт.*неорганическ',
             r'альдегид.*неорганическ',
@@ -866,31 +890,33 @@ class AIEngine:
         for pattern in wrong_statements:
             if re.search(pattern, text, re.IGNORECASE):
                 return False
-        
+
         return True
 
-    # -------- основной метод --------
-    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 20, verify: bool = True) -> str:
-        # главный метод для запроса к ИИ
+
+    def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 20, verify: bool = True, max_tokens: int = 0) -> str:
+
+
         history = history or []
         text = (text or "").strip()
         if not text:
-            return "Напиши вопрос 🙂"
+            return "Напиши вопрос."
 
         m = self.mode()
         is_offline = m == "OFFLINE"
+        self._max_tokens_override = max_tokens
 
-        # если вопрос похож на химический - подтягиваем факты
+
         retrieved_ctx = ""
         retrieved_sources: list[str] = []
         strict_sources = os.environ.get("MM_STRICT_SOURCES", "0").strip().lower() not in ("0", "false", "no")
 
-        # В оффлайне не тянем источники из интернета
+
         if not is_offline and self._is_chem_query(text):
             term = self._extract_term_ru(text)
             retrieved_ctx, retrieved_sources = self._build_retrieved_context_ru(term)
 
-            # если в строгом режиме и источников нет - не отвечаем выдумкой
+
             if strict_sources and not retrieved_ctx:
                 return (
                     "Не нашла подтверждённых данных в источниках. "
@@ -898,11 +924,11 @@ class AIEngine:
                     f"Что искала: «{term}»"
                 )
 
-        # системный промпт живёт здесь, не в интерфейсе
+
         base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
         base_messages.extend(history[-20:])
 
-        # если есть факты - запрещаем придумывать своё
+
         if retrieved_ctx:
             base_messages.append(
                 {
@@ -920,56 +946,64 @@ class AIEngine:
         base_messages.append({"role": "user", "content": text})
 
         def do_call(messages: list[dict]) -> str:
-            nonlocal is_offline  # чтобы можно было обновить режим при fallback
-            
-            if m == "ONLINE":
+            nonlocal is_offline
+
+            online_error = None
+            offline_error = None
+
+
+            if m == "ONLINE" or (m == "N/A" and self._is_internet_ok(timeout=2.0)):
                 try:
                     return self._ask_online(messages, timeout_sec=timeout_sec)
                 except Exception as e:
+                    online_error = str(e)
                     with self._lock:
-                        self._online_err = str(e)
+                        self._online_err = online_error
                         self._online_ok = False
-                        # Мгновенно сбрасываем кэш интернета при ошибке запроса
                         self._internet_ok_cached = False
                         self._internet_fail_streak = 1
                     self._switch("OFFLINE")
-                    is_offline = True  # обновляем флаг чтобы пропустить rewrite/verify
-                    return self._ask_offline(messages)
+                    is_offline = True
 
-            if m == "OFFLINE":
+
+            if m == "OFFLINE" or is_offline or m == "N/A":
+                is_offline = True
                 try:
                     return self._ask_offline(messages)
                 except Exception as e:
-                    return f"Оффлайн-модель временно недоступна: {str(e)[:100]}"
+                    offline_error = str(e)
 
-            # если режим N/A - пробуем оффлайн как последний шанс
-            is_offline = True
-            try:
-                return self._ask_offline(messages)
-            except Exception:
-                return "ИИ сейчас недоступен: нет доступа ни к онлайн, ни к оффлайн модели."
+
+            if online_error and offline_error:
+                return f"ИИ недоступен. Онлайн: {online_error[:50]}. Оффлайн: {offline_error[:50]}"
+            elif offline_error:
+                return f"Оффлайн-модель недоступна: {offline_error[:100]}"
+            elif online_error:
+                return f"Онлайн ИИ недоступен: {online_error[:100]}"
+
+            return "ИИ сейчас недоступен."
 
         answer = (do_call(base_messages) or "").strip()
 
-        # если были факты, но ответ пуст - не выдумываем
+
         if retrieved_ctx and not answer:
             return (
                 "Нашла данные в источниках, но не смогла сформировать ответ. "
                 "Попробуй задать вопрос короче."
             )
 
-        # В оффлайн режиме пропускаем rewrite и verify чтобы отвечать быстрее
+
         if not is_offline:
-            # переписываем ответ на русском, если проскочила латиница
+
             for attempt in range(3):
                 if self._is_answer_quality_good(answer) and not self._needs_russian_rewrite(answer):
                     break
-                
-                # если совсем плохо - отдаём фоллбэк
+
+
                 if attempt >= 2 and not self._is_answer_quality_good(answer):
                     answer = "К сожалению, я не смог дать корректный ответ на этот вопрос. Попробуйте переформулировать вопрос или задать другой."
                     break
-                
+
                 rewrite_messages = [
                     {"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)},
                     {
@@ -991,7 +1025,7 @@ class AIEngine:
                 else:
                     break
 
-            # проверка ответа ещё одной моделью (можно отключить)
+
             verify_enabled = (
                 verify
                 and os.environ.get("MM_AI_VERIFY", "1").strip().lower() not in ("0", "false", "no")
@@ -1005,9 +1039,11 @@ class AIEngine:
                 if verified:
                     answer = verified
 
-        # финальная чистка
+
+        answer = self._guard_unrelated(text, answer)
+        answer = self._trim_if_uncertain(answer)
         answer = self._force_ru_terms(answer)
-        answer = self._fix_typos(answer)  # спиры -> спирты и т.п.
+        answer = self._fix_typos(answer)
         answer = self._sanitize_for_ui(answer)
         answer = self._fix_cyrillic_confusables(answer)
 
@@ -1016,7 +1052,7 @@ class AIEngine:
 
         return answer
 
-    # -------- внутренние методы --------
+
     def _switch(self, mode: str) -> None:
         with self._lock:
             if self._mode != mode:
@@ -1033,36 +1069,32 @@ class AIEngine:
         return tok
 
     def _is_internet_ok(self, timeout: float = 3.0) -> bool:
-        """Проверяет доступность интернета реальным HTTP запросом, не только socket."""
-        # Сначала быстрая проверка socket
-        try:
-            with socket.create_connection(("router.huggingface.co", 443), timeout=1.5):
-                pass
-        except OSError:
-            return False
-        
-        # Затем реальный HTTP HEAD запрос чтобы убедиться что трафик проходит
-        try:
-            r = self._http.head(
-                "https://huggingface.co/api/whoami-v2",
-                timeout=timeout,
-                allow_redirects=False,
-            )
-            # Любой ответ (даже 401) означает что интернет работает
-            return r.status_code < 500
-        except Exception:
-            return False
+        """Проверяет доступность интернета через socket connection."""
+
+        hosts = [
+            ("router.huggingface.co", 443),
+            ("huggingface.co", 443),
+            ("google.com", 443),
+        ]
+        for host, port in hosts:
+            try:
+                with socket.create_connection((host, port), timeout=timeout):
+                    return True
+            except OSError:
+                continue
+        return False
 
     def _find_llama_lib_dir(self) -> str:
         """Ищет директорию с библиотекой libllama.so"""
         android_private = os.environ.get("ANDROID_PRIVATE", "")
+        android_argument = os.environ.get("ANDROID_ARGUMENT", "")
         project_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(project_dir, os.pardir))
-        
+
         potential_paths = []
-        
-        if android_private:
-            # Шаг 1: Пробуем получить путь через jnius (nativeLibraryDir)
+
+        if android_private or android_argument:
+
             try:
                 from jnius import autoclass
                 PythonActivity = autoclass("org.kivy.android.PythonActivity")
@@ -1074,34 +1106,37 @@ class AIEngine:
                         potential_paths.append(native_lib_dir)
             except Exception:
                 pass
-            
-            # Шаг 2: extracted libs из files/native_libs
-            files_dir = os.path.dirname(android_private)
-            potential_paths.append(os.path.join(files_dir, "native_libs"))
-            
-            # Шаг 3: Fallback paths
-            data_dir = os.path.dirname(files_dir)
-            potential_paths.extend([
-                os.path.join(data_dir, "lib"),
-                os.path.join(data_dir, "lib", "arm64"),
-            ])
+
+
+            files_dir = os.path.dirname(android_private) if android_private else os.path.dirname(android_argument)
+            if files_dir:
+                potential_paths.append(os.path.join(files_dir, "native_libs"))
+
+
+            if files_dir:
+                data_dir = os.path.dirname(files_dir)
+                potential_paths.extend([
+                    os.path.join(data_dir, "lib"),
+                    os.path.join(data_dir, "lib", "arm64"),
+                    os.path.join(data_dir, "lib", "arm64-v8a"),
+                ])
         else:
-            # Desktop: используем assets/llama
+
             potential_paths.append(os.path.join(project_root, "assets", "llama"))
-        
-        # Также проверяем LD_LIBRARY_PATH
+
+
         ld_path = os.environ.get("LD_LIBRARY_PATH", "")
         if ld_path:
             potential_paths.extend(ld_path.split(":"))
-        
-        # Ищем libllama.so
+
+
         for path in potential_paths:
             if not path or not os.path.isdir(path):
                 continue
             lib_path = os.path.join(path, "libllama.so")
             if os.path.exists(lib_path):
                 return path
-        
+
         return ""
 
     def _ensure_android_llama_paths(self) -> None:
@@ -1115,13 +1150,13 @@ class AIEngine:
             sys.path.insert(0, third_party_dir)
 
         llama_dir = self._find_llama_lib_dir()
-        
+
         if not llama_dir:
             return
-        
+
         lib_path = os.path.join(llama_dir, "libllama.so")
         if os.path.exists(lib_path):
-            # llama_cpp читает LLAMA_CPP_LIB_PATH (директория)
+
             os.environ["LLAMA_CPP_LIB_PATH"] = llama_dir
             os.environ["LLAMA_CPP_LIB"] = lib_path
             existing = os.environ.get("LD_LIBRARY_PATH", "")
@@ -1137,28 +1172,28 @@ class AIEngine:
                         pass
 
     def _try_import_llama(self) -> bool:
-        # Очищаем кеш импорта llama_cpp чтобы переменные окружения применились
+
         for mod_name in list(sys.modules.keys()):
             if "llama_cpp" in mod_name:
                 del sys.modules[mod_name]
-        
+
         try:
-            import llama_cpp  # noqa: F401
+            import llama_cpp
             return True
         except Exception as e1:
-            # Сохраняем первую ошибку для диагностики
+
             first_err = str(e1)
-            # попытка восстановить пути на Android
+
             try:
                 self._ensure_android_llama_paths()
-                # Очищаем кеш снова после настройки путей
+
                 for mod_name in list(sys.modules.keys()):
                     if "llama_cpp" in mod_name:
                         del sys.modules[mod_name]
-                import llama_cpp  # noqa: F401
+                import llama_cpp
                 return True
             except Exception as e2:
-                # Сохраняем финальную ошибку
+
                 with self._lock:
                     self._llama_err = f"1st: {first_err[:100]}; 2nd: {str(e2)[:100]}"
                 return False
@@ -1169,19 +1204,65 @@ class AIEngine:
                 return self._llama
 
         try:
-            from llama_cpp import Llama  # type: ignore
+            from llama_cpp import Llama
 
-            # Используем меньше потоков на мобильных устройствах для стабильности
+
             cpu_count = os.cpu_count() or 4
-            default_threads = min(4, cpu_count)  # не более 4 потоков
-            
-            llm = Llama(
-                model_path=self.offline_model_path,
-                n_ctx=int(os.environ.get("LLAMA_N_CTX", "1024")),  # уменьшено с 2048
-                n_threads=int(os.environ.get("LLAMA_THREADS", str(default_threads))),
-                n_gpu_layers=int(os.environ.get("LLAMA_GPU_LAYERS", "0")),
-                verbose=False,
-            )
+            default_threads = min(4, cpu_count)
+
+            n_threads = int(os.environ.get("LLAMA_THREADS", str(default_threads)))
+            n_gpu_layers = int(os.environ.get("LLAMA_GPU_LAYERS", "0"))
+            env_n_ctx = int(os.environ.get("LLAMA_N_CTX", "512"))
+            env_n_batch = int(os.environ.get("LLAMA_N_BATCH", "64"))
+            env_n_ubatch = int(os.environ.get("LLAMA_N_UBATCH", str(env_n_batch)))
+
+            # На Android часто не хватает RAM для больших параметров контекста.
+            # Пробуем несколько профилей от обычного к экономному.
+            attempts = [
+                (env_n_ctx, env_n_batch, env_n_ubatch, n_threads, True),
+                (256, 16, 16, max(1, min(2, n_threads)), True),
+                (128, 8, 8, 1, True),
+                (64, 4, 4, 1, True),
+                (64, 2, 2, 1, False),
+                (32, 1, 1, 1, False),
+            ]
+
+            # Сохраняем порядок и убираем дубликаты.
+            seen = set()
+            unique_attempts = []
+            for a in attempts:
+                if a not in seen:
+                    seen.add(a)
+                    unique_attempts.append(a)
+
+            last_err = None
+            llm = None
+            for n_ctx, n_batch, n_ubatch, cur_threads, cur_mmap in unique_attempts:
+                try:
+                    llm = Llama(
+                        model_path=self.offline_model_path,
+                        n_ctx=int(n_ctx),
+                        n_batch=int(n_batch),
+                        n_ubatch=int(n_ubatch),
+                        n_threads=max(1, int(cur_threads)),
+                        n_threads_batch=1,
+                        n_gpu_layers=n_gpu_layers,
+                        offload_kqv=False,
+                        flash_attn=False,
+                        use_mmap=bool(cur_mmap),
+                        use_mlock=False,
+                        numa=False,
+                        verbose=False,
+                    )
+                    break
+                except Exception as e:
+                    last_err = e
+
+            if llm is None:
+                raise RuntimeError(
+                    f"Не удалось создать llama_context даже в экономном режиме: {last_err}"
+                )
+
             with self._lock:
                 self._llama = llm
                 self._llama_err = ""
@@ -1192,29 +1273,38 @@ class AIEngine:
             raise
 
     def _ask_offline(self, messages: list[dict]) -> str:
+
+        if not os.path.exists(self.offline_model_path):
+            return f"Оффлайн-модель не найдена: {self.offline_model_path}"
+
         try:
             llm = self._ensure_llama()
         except Exception as e:
             err_msg = str(e)
+
+            with self._lock:
+                self._llama_err = err_msg
             if "llama_cpp" in err_msg.lower() or "import" in err_msg.lower():
-                return "Оффлайн-модель недоступна: не удалось загрузить библиотеку llama_cpp."
+                return f"Оффлайн-модель недоступна: не удалось загрузить llama_cpp. {err_msg[:80]}"
             if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
-                return "Оффлайн-модель не найдена. Пожалуйста, скачайте модель в настройках."
+                return f"Оффлайн-модель не найдена по пути: {self.offline_model_path}"
             return f"Ошибка загрузки оффлайн-модели: {err_msg[:100]}"
-        
+
         try:
+
+            tokens = getattr(self, "_max_tokens_override", 0) or 400
             res = llm.create_chat_completion(
                 messages=messages,
-                temperature=0.3,  # чуть выше для более естественного русского
+                temperature=0.3,
                 top_p=0.9,
-                max_tokens=400,  # уменьшено с 768 для скорости
+                max_tokens=tokens,
             )
             answer = (res["choices"][0]["message"]["content"] or "").strip()
-            # Постобработка: заменяем английские слова на русские
+
             answer = self._translate_english_words(answer)
             return answer
         except Exception as e:
-            return f"Ошибка генерации ответа оффлайн-модели: {str(e)[:100]}"
+            return f"Ошибка генерации ответа: {str(e)[:100]}"
 
     def _ask_online(self, messages: list[dict], timeout_sec: int) -> str:
         tok = self._read_token()
@@ -1228,11 +1318,13 @@ class AIEngine:
             "Authorization": f"Bearer {tok}",
             "Content-Type": "application/json",
         }
+
+        tokens = getattr(self, "_max_tokens_override", 0) or 800
         payload = {
             "model": os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
             "messages": messages,
             "temperature": 0.2,
-            "max_tokens": 800,
+            "max_tokens": tokens,
         }
 
         r = self._http.post(url, headers=headers, json=payload, timeout=timeout_sec)
@@ -1246,7 +1338,7 @@ class AIEngine:
             return json.dumps(data)[:800]
 
     def _health_loop(self) -> None:
-        # следим за интернетом и моделью, чтобы переключать режим
+
         while not self._stop:
             if not hasattr(self, "_internet_fail_streak"):
                 self._internet_fail_streak = 0
@@ -1262,7 +1354,7 @@ class AIEngine:
                     self._internet_ok_cached = True
                 else:
                     self._internet_fail_streak += 1
-                    # быстро переключаемся если интернета нет
+
                     if self._internet_fail_streak >= 1:
                         self._internet_ok_cached = False
 
@@ -1271,7 +1363,6 @@ class AIEngine:
                 offline_ok = (
                     os.path.exists(self.offline_model_path)
                     and os.path.getsize(self.offline_model_path) > 0
-                    and self._try_import_llama()
                 )
 
                 if internet and token_ok:
@@ -1294,4 +1385,4 @@ class AIEngine:
                     self._online_err = str(e)
                 self._switch("N/A")
 
-            time.sleep(5.0)  # проверяем часто чтобы быстро переключаться
+            time.sleep(7.0)

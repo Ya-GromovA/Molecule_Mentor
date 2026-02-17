@@ -12,6 +12,7 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.scrollview import MDScrollView
 
 from .base_screen import BaseScreen
+from utils.text_sanitize import sanitize_text_for_kivy
 
 
 class ClickableCard(ButtonBehavior, BoxLayout):
@@ -50,36 +51,32 @@ class ClickableCard(ButtonBehavior, BoxLayout):
 
 
 class CourseTopicScreen(BaseScreen):
-    """
-    Универсальный экран “Курс/Раздел/Тема”:
 
-    nav_state:
-      - course_id, course_title -> показываем разделы
-      - section_id, section_title -> показываем темы
-      - topic_id, topic_title -> показываем blocks (теорию)
-    """
-
+    """Экран разделов и тем курса."""
     def on_pre_enter(self, *args):
         super().on_pre_enter(*args)
         Clock.schedule_once(lambda *_: self._render(), 0)
 
-    # ---------------- оформление UI ----------------
+
 
     def _make_clickable_item(self, title: str, subtitle: str = None, on_click=None) -> ClickableCard:
-        """Создаёт кликабельный элемент списка."""
+        """Создаём кликабельный элемент списка."""
         app = self.get_app()
+
+
+        lavender_color = (0.45, 0.42, 0.65, 1)
 
         card = ClickableCard(
             on_click=on_click,
-            bg_color=app.mm_surface,
+            bg_color=lavender_color,
             orientation="vertical",
             size_hint_y=None,
-            height=dp(72) if subtitle else dp(56),
+            height=dp(72) if subtitle else dp(64),
             padding=[dp(16), dp(12), dp(16), dp(12)],
         )
 
         headline = MDLabel(
-            text=title,
+            text=sanitize_text_for_kivy(title),
             theme_text_color="Custom",
             text_color=app.mm_text,
             font_size=dp(16),
@@ -91,7 +88,7 @@ class CourseTopicScreen(BaseScreen):
 
         if subtitle:
             supporting = MDLabel(
-                text=subtitle,
+                text=sanitize_text_for_kivy(subtitle),
                 theme_text_color="Custom",
                 text_color=app.mm_text2,
                 font_size=dp(14),
@@ -106,7 +103,7 @@ class CourseTopicScreen(BaseScreen):
         app = self.get_app()
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
 
-        # фон как у тёмных экранов
+
         bg_rgba = getattr(app, "mm_bg", None) or getattr(app, "mm_surface", None) or (0.06, 0.07, 0.09, 1)
         with root.canvas.before:
             self._bg_color = Color(*bg_rgba)
@@ -120,7 +117,7 @@ class CourseTopicScreen(BaseScreen):
             self._bg_rect.pos = self.parent.pos if self.parent else self.pos
             self._bg_rect.size = self.size
 
-    # ---------------- отрисовка ----------------
+
 
     def _render(self):
         app = self.get_app()
@@ -137,7 +134,7 @@ class CourseTopicScreen(BaseScreen):
         self.clear_widgets()
         root = self._make_root()
 
-        # ---- MODE 1: раздел -> темы
+
         if section_id is not None:
             self.title = str(section_title)
             app.set_top_title(self.title)
@@ -159,7 +156,7 @@ class CourseTopicScreen(BaseScreen):
             col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10), padding=[0, dp(6), 0, dp(6)])
             col.bind(minimum_height=col.setter("height"))
 
-            # Список тем раздела (без кнопки теста - тесты в викторинах)
+
             for t in topics:
                 item = self._make_clickable_item(
                     title=str(t.title),
@@ -172,7 +169,7 @@ class CourseTopicScreen(BaseScreen):
             self.add_widget(root)
             return
 
-        # ---- MODE 3: курс -> разделы
+
         if course_id is None:
             root.add_widget(
                 MDLabel(

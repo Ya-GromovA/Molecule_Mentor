@@ -17,7 +17,7 @@ class Atom:
 class Molecule:
     name: str
     atoms: list[Atom]
-    bonds: list[tuple[int, int]]  # indices into atoms
+    bonds: list[tuple[int, int]]
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class ReactionFrame:
 @dataclass(frozen=True)
 class Reaction:
     meta: ReactionMeta
-    steps: list[dict]  # {"title":..., "description":...}
+    steps: list[dict]
     frames: list[ReactionFrame]
 
 
@@ -79,7 +79,7 @@ def normalize_element(raw: str) -> str:
         return "X"
     if len(s) == 1:
         return s.upper()
-    # first letter uppercase, rest lowercase (Cl, Na, Mg)
+
     return s[0].upper() + s[1:].lower()
 
 

@@ -32,7 +32,7 @@ def heat_transform(state: MoleculeState, intensity: float) -> tuple[MoleculeStat
         return math.dist((ai.x, ai.y, ai.z), (aj.x, aj.y, aj.z))
 
     bonds_sorted = sorted(bonds, key=bond_len, reverse=True)
-    # how many to break
+
     k = int(max(1, min(len(bonds), round(len(bonds) * (0.10 + 0.25 * intensity)))))
     candidates = bonds_sorted[: max(k, 1)]
 
@@ -57,10 +57,10 @@ def cool_transform(state: MoleculeState, intensity: float) -> tuple[MoleculeStat
         return state, []
 
     formed: set[tuple[int, int]] = set()
-    # threshold depends on intensity
+
     thresh = 1.05 + 0.35 * intensity
 
-    # try pair candidates
+
     indices = list(range(len(atoms)))
     random.shuffle(indices)
 

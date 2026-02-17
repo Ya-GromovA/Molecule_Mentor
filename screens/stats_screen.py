@@ -21,7 +21,7 @@ from kivymd.uix.progressindicator import MDCircularProgressIndicator
 from .base_screen import BaseScreen
 
 
-# Достижения (без emoji - они могут отображаться как нечитаемые символы)
+
 ACHIEVEMENTS = [
     {
         "id": "first_quiz",
@@ -109,7 +109,7 @@ class AchievementCard(BoxLayout):
         self.padding = [dp(12), dp(8)]
         self.spacing = dp(4)
 
-        # Фон
+
         bg_color = (0.15, 0.2, 0.15, 1) if unlocked else (0.12, 0.12, 0.15, 1)
         with self.canvas.before:
             Color(*bg_color)
@@ -146,7 +146,7 @@ class AchievementCard(BoxLayout):
 
 
 class StatsScreen(BaseScreen):
-    """Экран статистики и достижений."""
+    """Статистика и достижения."""
 
     def on_pre_enter(self, *args):
         self.title = "Статистика"
@@ -175,9 +175,9 @@ class StatsScreen(BaseScreen):
 
         try:
             with self._conn() as c:
-                # Общая статистика
+
                 row = c.execute("""
-                    SELECT 
+                    SELECT
                         COUNT(*) as attempts,
                         SUM(score) as correct,
                         SUM(total) as questions,
@@ -215,7 +215,7 @@ class StatsScreen(BaseScreen):
         )
         content.bind(minimum_height=content.setter('height'))
 
-        # === Общая статистика ===
+
         stats_section = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
@@ -224,7 +224,7 @@ class StatsScreen(BaseScreen):
         )
         stats_section.bind(minimum_height=stats_section.setter('height'))
 
-        # Фон секции
+
         with stats_section.canvas.before:
             Color(0.1, 0.12, 0.18, 1)
             stats_section._bg = RoundedRectangle(
@@ -235,7 +235,7 @@ class StatsScreen(BaseScreen):
             size=lambda *_: setattr(stats_section._bg, 'size', stats_section.size)
         )
 
-        # Заголовок
+
         header = MDLabel(
             text="Ваш прогресс",
             bold=True,
@@ -247,7 +247,7 @@ class StatsScreen(BaseScreen):
         )
         stats_section.add_widget(header)
 
-        # Статистика в строках
+
         stat_items = [
             ("Пройдено викторин", str(stats["total_attempts"])),
             ("Правильных ответов", str(stats["total_correct"])),
@@ -258,7 +258,7 @@ class StatsScreen(BaseScreen):
 
         for label, value in stat_items:
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
-            
+
             label_widget = MDLabel(
                 text=label,
                 theme_text_color="Custom",
@@ -283,7 +283,7 @@ class StatsScreen(BaseScreen):
 
         content.add_widget(stats_section)
 
-        # === Достижения ===
+
         achievements_header = MDLabel(
             text="Достижения",
             bold=True,
@@ -296,7 +296,7 @@ class StatsScreen(BaseScreen):
         )
         content.add_widget(achievements_header)
 
-        # Счётчик достижений
+
         unlocked_count = sum(1 for a in ACHIEVEMENTS if a["condition"](stats))
         total_count = len(ACHIEVEMENTS)
 
@@ -311,7 +311,7 @@ class StatsScreen(BaseScreen):
         )
         content.add_widget(counter_label)
 
-        # Карточки достижений
+
         for achievement in ACHIEVEMENTS:
             unlocked = achievement["condition"](stats)
             card = AchievementCard(achievement=achievement, unlocked=unlocked)

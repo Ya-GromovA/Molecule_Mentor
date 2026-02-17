@@ -30,19 +30,19 @@ class LlamaPromptLookupDecoding(LlamaDraftModel):
         input_length = input_ids.shape[0]
 
         for ngram_size in range(min(max_ngram_size, input_length - 1), 0, -1):
-            # Create sliding windows of size ngram_size
+
             windows = np.lib.stride_tricks.sliding_window_view(input_ids, (ngram_size,))
 
-            # Convert ngram to an array for comparison
+
             ngram_array = input_ids[-ngram_size:]
 
-            # Find where the windows match the ngram
+
             matches = np.all(windows == ngram_array, axis=1)
 
-            # Get the indices of matches
+
             match_indices = np.nonzero(matches)[0]
 
-            # Iterate through match indices to find a valid continuation
+
             for idx in match_indices:
                 start_idx = idx + ngram_size
                 end_idx = start_idx + num_pred_tokens
@@ -51,7 +51,7 @@ class LlamaPromptLookupDecoding(LlamaDraftModel):
                 if start_idx < end_idx:
                     return input_ids[start_idx:end_idx]
 
-        # If no match is found, return an empty array
+
         return np.array([], dtype=np.intc)
 
     def __call__(

@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/utils/molecule_db.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from utils.pdb_tools import load_pdb_file, formula_hill, to_subscript
 
 
-# --- атомные массы для мол. массы (г/моль), школьный уровень ---
+
 ATOMIC_MASS = {
     "H": 1.008,
     "C": 12.011,
@@ -29,21 +29,21 @@ ATOMIC_MASS = {
 
 @dataclass(frozen=True)
 class MoleculeDef:
-    key: str                 # имя файла без .pdb
-    name: str                # русское имя
-    formula: str             # ASCII: H2O, CH3COOH (для логики)
-    atoms: List[str]         # список элементов (H, C, O...) по атомам
-    system_name: str = ""    # систематическое/химическое название (опционально)
-    formula_pretty: str = "" # красивая формула с индексами (для UI)
-    molar_mass: float = 0.0  # молекулярная масса (г/моль)
+    key: str
+    name: str
+    formula: str
+    atoms: List[str]
+    system_name: str = ""
+    formula_pretty: str = ""
+    molar_mass: float = 0.0
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_MOL_DIR = BASE_DIR / "assets" / "molecules"
 
 
-# key -> (ru_name, system_name, formula_override_ascii)
-# Формула override нужна, потому что Hill-сортировка для неорганики даёт некрасиво (CLH вместо HCl, CLNA вместо NaCl).
+
+
 MOLECULE_DICT: Dict[str, Tuple[str, str, Optional[str]]] = {
     "water": ("Вода", "Оксид водорода", "H2O"),
     "methane": ("Метан", "Тетрагидрид углерода", "CH4"),
@@ -91,13 +91,13 @@ def _molar_mass_from_atoms(atoms: List[str]) -> float:
 def _infer_atoms_and_formula_from_pdb(pdb_path: Path) -> Tuple[List[str], str]:
     atoms_dicts = load_pdb_file(pdb_path)
     elems = [str(a.get("element", "C")).upper() for a in atoms_dicts]
-    f = formula_hill(atoms_dicts)  # ASCII, но может быть “CLH”
+    f = formula_hill(atoms_dicts)
     return elems, f
 
 
 def scan_molecules() -> List[MoleculeDef]:
     if not ASSETS_MOL_DIR.exists():
-        # если вдруг ассеты не в проекте (крайний случай)
+
         return []
 
     mols: List[MoleculeDef] = []
@@ -133,10 +133,10 @@ def scan_molecules() -> List[MoleculeDef]:
     return mols
 
 
-# Главный список — теперь из автоскана
+
 MOLECULES: List[MoleculeDef] = scan_molecules()
 
-# Индексы
+
 KEY_INDEX: Dict[str, MoleculeDef] = {m.key: m for m in MOLECULES}
 NAME_INDEX: Dict[str, MoleculeDef] = {m.name.lower(): m for m in MOLECULES}
 FORMULA_INDEX: Dict[str, MoleculeDef] = {m.formula: m for m in MOLECULES}

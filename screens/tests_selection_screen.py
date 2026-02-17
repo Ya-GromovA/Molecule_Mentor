@@ -23,19 +23,22 @@ from .base_screen import BaseScreen
 class TestCard(ButtonBehavior, BoxLayout):
     """Карточка теста."""
 
-    def __init__(self, title: str, on_select=None, **kwargs):
+    def __init__(self, title: str, color: tuple = None, on_select=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
-        self.height = dp(48)
-        self.padding = [dp(12), dp(6)]
+        self.height = dp(64)
+        self.padding = [dp(16), dp(12)]
         self.spacing = dp(2)
 
         self._on_select = on_select
 
+
+        bg_color = color if color else (0.13, 0.16, 0.24, 1)
+
         with self.canvas.before:
-            Color(0.16, 0.18, 0.22, 1)
-            self._bg = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(10)])
+            Color(*bg_color)
+            self._bg = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(16)])
 
         self.bind(pos=self._update_bg, size=self._update_bg)
 
@@ -43,11 +46,11 @@ class TestCard(ButtonBehavior, BoxLayout):
             text=title,
             bold=True,
             halign="left",
+            valign="center",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
-            font_size=sp(14),
-            size_hint_y=None,
-            height=dp(24),
+            font_size=sp(16),
+            size_hint_y=1,
         )
         self.add_widget(title_label)
 
@@ -62,7 +65,7 @@ class TestCard(ButtonBehavior, BoxLayout):
 
 
 class TestsSelectionScreen(BaseScreen):
-    """Экран выбора теста."""
+    """Выбор теста."""
 
     def on_pre_enter(self, *args):
         self.title = "Тесты"
@@ -173,6 +176,9 @@ class TestsSelectionScreen(BaseScreen):
         )
         content.bind(minimum_height=content.setter("height"))
 
+
+        card_color = (0.45, 0.42, 0.65, 1)
+
         for test in tests:
             def _make_on_select(test_data: Dict[str, Any]):
                 def _on_select():
@@ -187,6 +193,7 @@ class TestsSelectionScreen(BaseScreen):
 
             card = TestCard(
                 title=str(test.get("quiz_title") or "Тест"),
+                color=card_color,
                 on_select=_make_on_select(test),
             )
             content.add_widget(card)

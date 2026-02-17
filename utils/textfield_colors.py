@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/utils/textfield_colors.py
+
 """KivyMD 2.x MDTextField color hardening.
 
 Проблема: в KivyMD 2.x иногда цвет вводимого текста в `MDTextField` может
@@ -36,7 +36,7 @@ def _walk_widgets(root) -> Iterable[object]:
     except Exception:
         pass
 
-    # fallback
+
     stack = [root]
     seen = set()
     while stack:
@@ -73,7 +73,7 @@ def harden_mdtextfield_colors(
 
     def apply(*_args):
         try:
-            # Публичные свойства MDTextField (если доступны в сборке KivyMD)
+
             for attr in ("text_color", "foreground_color"):
                 if hasattr(tf, attr):
                     try:
@@ -91,7 +91,7 @@ def harden_mdtextfield_colors(
                 except Exception:
                     pass
 
-            # Главный смысл: найти реальный TextInput внутри и закрепить там.
+
             found = 0
             for w in _walk_widgets(tf):
                 if isinstance(w, TextInput):
@@ -115,12 +115,12 @@ def harden_mdtextfield_colors(
         except Exception as e:
             Logger.debug(f"[MM][TextFieldColors] apply failed: {e}")
 
-    # 1) сразу после построения дерева
+
     Clock.schedule_once(apply, 0)
-    # 2) ещё раз чуть позже (Android иногда создаёт дочерние виджеты не сразу)
+
     Clock.schedule_once(apply, 0.05)
 
-    # 3) и при ключевых событиях
+
     try:
         tf.bind(focus=apply)
     except Exception:

@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/tools/generate_courses_content.py
+
 from __future__ import annotations
 
 import argparse
@@ -19,19 +19,19 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = BASE_DIR / "data" / "courses" / "courses.db"
 
 
-# ----------------------------
-# Models
-# ----------------------------
+
+
+
 @dataclass(frozen=True)
 class OutlineTopic:
     title: str
-    key: str  # stable id inside section (slug-like)
+    key: str
 
 
 @dataclass(frozen=True)
 class OutlineSection:
     title: str
-    key: str  # stable id inside course (slug-like)
+    key: str
     topics: List[OutlineTopic]
 
 
@@ -39,13 +39,13 @@ class OutlineSection:
 class CourseOutline:
     course_title: str
     grade: int
-    level: str  # "base" | "adv"
+    level: str
     sections: List[OutlineSection]
 
 
-# ----------------------------
-# Utils
-# ----------------------------
+
+
+
 def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
@@ -79,9 +79,9 @@ def _require_hf_token() -> str:
     return token
 
 
-# ----------------------------
-# DB layer
-# ----------------------------
+
+
+
 class CoursesDB:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
@@ -149,7 +149,7 @@ class CoursesDB:
             )
             con.commit()
 
-        # миграции для старых БД
+
         self._migrate_add_column("courses", "created_at", "TEXT")
         self._migrate_add_column("course_sections", "created_at", "TEXT")
         self._migrate_add_column("course_topics", "created_at", "TEXT")
@@ -259,9 +259,9 @@ class CoursesDB:
             con.commit()
 
 
-# ----------------------------
-# AI generation (HF Router)
-# ----------------------------
+
+
+
 HF_ROUTER_URL = "https://router.huggingface.co/v1/chat/completions"
 
 
@@ -291,7 +291,7 @@ def hf_chat(prompt: str, model: str = "Qwen/Qwen2.5-7B-Instruct", temperature: f
 
 
 def generate_topic_theory(topic_title: str, section_title: str, grade: int, level: str) -> str:
-    # Pass 1: draft
+
     prompt1 = textwrap.dedent(
         f"""
         Сгенерируй теорию по теме: "{topic_title}" (раздел "{section_title}") для {grade} класса.
@@ -307,7 +307,7 @@ def generate_topic_theory(topic_title: str, section_title: str, grade: int, leve
 
     draft = hf_chat(prompt1, temperature=0.35)
 
-    # Pass 2: редактура “как учебник”
+
     prompt2 = textwrap.dedent(
         f"""
         Отредактируй текст ниже: убери двусмысленности, исправь возможные смысловые/терминологические ошибки,
@@ -319,38 +319,38 @@ def generate_topic_theory(topic_title: str, section_title: str, grade: int, leve
 
     refined = hf_chat(prompt2, temperature=0.2)
 
-    # Pass 3 (задел): проверка уравнений. Сейчас мягко: если модель не уверена — убираем строки с реакциями.
+
     refined = _strip_unsafe_equations(refined)
     return refined.strip()
 
 
 def _strip_unsafe_equations(text: str) -> str:
-    # Удаляем явные “реакционные” строки, если встречаются маркеры, но без гарантий корректности.
-    # Это компромисс для MVP. Следующим шагом сделаем строгую валидацию отдельным проходом.
+
+
     lines = text.splitlines()
     bad = []
     for ln in lines:
         if "→" in ln or "=>" in ln or "→" in ln or "=" in ln and any(x in ln for x in ["+", "→", "->"]):
-            # если это выглядит как уравнение — уберём в MVP
+
             bad.append(ln)
     if not bad:
         return text
     kept = [ln for ln in lines if ln not in bad]
-    # уберём двойные пустые
+
     cleaned = "\n".join(kept)
     cleaned = জানা = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned
 
 
-# ----------------------------
-# Outline auto (10 grade, adv)
-# ----------------------------
+
+
+
 def outline_auto_chem10_adv() -> CourseOutline:
     course_title = "Химия 10 класс — углублённый курс (органика + общая химия)"
     grade = 10
     level = "adv"
 
-    # Важно: это “разумное оглавление” под 10 класс, чтобы был нормальный учебный курс.
+
     sections: List[OutlineSection] = [
         OutlineSection(
             title="Введение в органическую химию",
@@ -448,9 +448,9 @@ def json_to_outline(data: Dict[str, Any]) -> CourseOutline:
     )
 
 
-# ----------------------------
-# Commands
-# ----------------------------
+
+
+
 def cmd_init_db(args: argparse.Namespace) -> int:
     db = CoursesDB(DB_PATH)
     if args.reset:
@@ -480,8 +480,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     outline = json_to_outline(data)
 
     if args.reset:
-        # чистим только курс этого grade/level, но проще MVP: полный reset по кнопке reset_all
-        # оставим поведение “полный reset” для предсказуемости
+
+
         db.reset_all()
         db.init_schema()
 

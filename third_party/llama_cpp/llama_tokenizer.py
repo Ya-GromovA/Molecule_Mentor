@@ -44,7 +44,7 @@ class BaseLlamaTokenizer(abc.ABC):
 
 class LlamaTokenizer(BaseLlamaTokenizer):
     def __init__(self, llama: llama_cpp.Llama):
-        self._model = llama._model  # type: ignore
+        self._model = llama._model
 
     def tokenize(
         self, text: bytes, add_bos: bool = True, special: bool = True

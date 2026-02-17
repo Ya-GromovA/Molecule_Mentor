@@ -19,9 +19,9 @@ from utils.molecule_parser import molecule_formula
 from utils.visualizer_3d import Visualizer3D
 
 
-# базовые вещества для редактора реакций
+
 SUBSTANCES = {
-    # кислоты
+
     "HCl": {
         "name": "Соляная кислота",
         "category": "acid",
@@ -40,7 +40,7 @@ SUBSTANCES = {
         "atoms": [("N", 0, 0, 0), ("O", 1.2, 0, 0), ("O", -0.6, 1.0, 0), ("O", -0.6, -1.0, 0), ("H", -1.5, 1.0, 0)],
         "bonds": [(0, 1), (0, 2), (0, 3), (2, 4)],
     },
-    # основания
+
     "NaOH": {
         "name": "Гидроксид натрия",
         "category": "base",
@@ -59,7 +59,7 @@ SUBSTANCES = {
         "atoms": [("Ca", 0, 0, 0), ("O", 2.0, 0.5, 0), ("H", 3.0, 0.5, 0), ("O", 2.0, -0.5, 0), ("H", 3.0, -0.5, 0)],
         "bonds": [(0, 1), (1, 2), (0, 3), (3, 4)],
     },
-    # простые вещества и оксиды
+
     "H2O": {
         "name": "Вода",
         "category": "other",
@@ -78,7 +78,7 @@ SUBSTANCES = {
         "atoms": [("N", 0, 0, 0), ("H", 1.0, 0, 0), ("H", -0.5, 0.87, 0), ("H", -0.5, -0.87, 0)],
         "bonds": [(0, 1), (0, 2), (0, 3)],
     },
-    # металлы (упрощённо как атомы)
+
     "Na": {
         "name": "Натрий",
         "category": "metal",
@@ -103,7 +103,7 @@ SUBSTANCES = {
         "atoms": [("Fe", 0, 0, 0)],
         "bonds": [],
     },
-    # органика
+
     "CH3OH": {
         "name": "Метанол",
         "category": "organic",
@@ -124,9 +124,11 @@ SUBSTANCES = {
     },
 }
 
-# известные реакции для редактора
+
+
+
 KNOWN_REACTIONS_EDITOR = {
-    # кислота + основание -> соль + вода
+
     frozenset(["HCl", "NaOH"]): {
         "possible": True,
         "min_temp": -50,
@@ -151,7 +153,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Реакция нейтрализации серной кислоты. Сильно экзотермическая!",
         "effect": "heat",
     },
-    # металл + кислота -> соль + водород
+
     frozenset(["Zn", "HCl"]): {
         "possible": True,
         "min_temp": 0,
@@ -184,7 +186,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "ОЧЕНЬ ОПАСНО! Калий реагирует ещё активнее натрия. Взрыв и пламя!",
         "effect": "explosion",
     },
-    # карбонаты + кислоты
+
     frozenset(["CO2", "NaOH"]): {
         "possible": True,
         "min_temp": -50,
@@ -201,7 +203,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Обратимая реакция. Угольная кислота быстро распадается обратно.",
         "effect": "none",
     },
-    # аммиак
+
     frozenset(["NH3", "HCl"]): {
         "possible": True,
         "min_temp": -50,
@@ -218,7 +220,7 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Аммиак хорошо растворяется в воде. Резкий запах!",
         "effect": "none",
     },
-    # этерификация
+
     frozenset(["CH3COOH", "C2H5OH"]): {
         "possible": True,
         "min_temp": 60,
@@ -227,8 +229,8 @@ KNOWN_REACTIONS_EDITOR = {
         "description": "Реакция этерификации. Требует нагрева и катализатора (H2SO4). Приятный фруктовый запах!",
         "effect": "none",
     },
-    # ===== 3-компонентные реакции =====
-    # при 3+ компонентах бывает несколько вариантов
+
+
     frozenset(["HCl", "Zn", "NH3"]): {
         "possible": True,
         "min_temp": 0,
@@ -341,7 +343,7 @@ KNOWN_REACTIONS_EDITOR = {
         ),
         "effect": "heat",
     },
-    # невозможные реакции
+
     frozenset(["H2O", "NaOH"]): {
         "possible": False,
         "description": "NaOH уже растворён в воде. Химической реакции не происходит, только растворение.",
@@ -358,14 +360,7 @@ KNOWN_REACTIONS_EDITOR = {
 
 
 class ReactionEditorScreen(Screen):
-    """
-    Экран 'Похимичим!' — редактор реакций.
-    Позволяет:
-    - Выбирать реагенты из списка
-    - Смешивать их
-    - Изменять температуру
-    - Наблюдать результат реакции с анимацией
-    """
+    """Эксперименты с реакциями."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -374,10 +369,10 @@ class ReactionEditorScreen(Screen):
         self._current_bonds: list[tuple[int, int]] = []
         self._highlight_break: list[tuple[int, int]] = []
         self._highlight_form: list[tuple[int, int]] = []
-        
-        # группы атомов для независимого вращения
+
+
         self._molecule_groups: list[list[int]] = []
-        
+
         self._temperature: float = 25.0
         self._added_substances: list[str] = []
         self._reaction_done: bool = False
@@ -403,7 +398,7 @@ class ReactionEditorScreen(Screen):
 
         host.clear_widgets()
 
-        # контейнер для 3D-вьювера
+
         card = BoxLayout(
             orientation="vertical",
             padding=[dp(10), dp(10), dp(10), dp(10)],
@@ -422,7 +417,7 @@ class ReactionEditorScreen(Screen):
         card.add_widget(self._viewer)
         host.add_widget(card)
 
-        # сброс состояния
+
         self._reset_all()
 
     def _reset_all(self) -> None:
@@ -431,16 +426,16 @@ class ReactionEditorScreen(Screen):
         self._current_bonds = []
         self._highlight_break = []
         self._highlight_form = []
-        self._molecule_groups = []  # сброс групп
+        self._molecule_groups = []
         self._temperature = 25.0
         self._added_substances = []
         self._reaction_done = False
-        
-        # сброс слайдера
+
+
         temp_slider = self.ids.get("temp_slider")
         if temp_slider:
             temp_slider.value = 25.0
-        
+
         self._update_viewer()
         self._update_info()
         self._update_temp_label()
@@ -453,7 +448,7 @@ class ReactionEditorScreen(Screen):
                 self._current_bonds,
                 highlight_break=self._highlight_break,
                 highlight_form=self._highlight_form,
-                groups=self._molecule_groups,  # группы для независимого вращения
+                groups=self._molecule_groups,
             )
 
     def _update_info(self) -> None:
@@ -474,16 +469,16 @@ class ReactionEditorScreen(Screen):
     def _update_temp_label(self) -> None:
         temp_label = self.ids.get("temp_label")
         if temp_label:
-            temp_label.text = f"{self._temperature:.0f}°C"
+            temp_label.text = f"{self._temperature:.0f} C"
 
     def _update_slider_color(self) -> None:
         temp_slider = self.ids.get("temp_slider")
         temp_label = self.ids.get("temp_label")
         if not temp_slider:
             return
-        
+
         t = (self._temperature + 200) / 700
-        
+
         if t < 0.32:
             ratio = t / 0.32
             r = 0.2 + ratio * 0.8
@@ -494,15 +489,15 @@ class ReactionEditorScreen(Screen):
             r = 0.95
             g = 1.0 - ratio * 0.7
             b = 1.0 - ratio * 0.8
-        
+
         color = (r, g, b, 1)
-        
+
         try:
             temp_slider.track_active_color = color
             temp_slider.thumb_color = color
         except Exception:
             pass
-        
+
         if temp_label:
             temp_label.text_color = color
 
@@ -527,24 +522,24 @@ class ReactionEditorScreen(Screen):
         self._update_slider_color()
 
     def show_substance_menu(self, category: str) -> None:
-        """Показывает меню выбора веществ по категории."""
+        """Показывает меню выбора веществ над кнопкой."""
         from kivymd.uix.menu import MDDropdownMenu
-        
+
         menu_items = []
         for key, data in SUBSTANCES.items():
             if data["category"] == category:
                 menu_items.append({
                     "text": f"{data['name']} ({key})",
-                    "font_size": sp(11),
-                    "height": dp(32),
+                    "font_size": sp(12),
+                    "height": dp(36),
                     "on_release": lambda k=key: self._add_substance(k),
                 })
-        
+
         if not menu_items:
             self._show_message(f"Нет веществ в категории")
             return
-        
-        # находим кнопку-caller
+
+
         caller = None
         if category == "acid":
             caller = self.ids.get("btn_acid")
@@ -556,31 +551,21 @@ class ReactionEditorScreen(Screen):
             caller = self.ids.get("btn_other")
         elif category == "organic":
             caller = self.ids.get("btn_organic")
-        
+
         if not caller:
             return
 
-        # Фиксированная ширина меню — компактнее, одинаковая для всех категорий
-        menu_width = dp(180)
 
-        # Все меню открываются ВВЕРХ от кнопки
-        # position="bottom" + ver_growth="up" = меню появляется над кнопкой
-        ver_growth = "up"
-        position = "bottom"
-        hor_growth = "right"
-        
-        # Высота меню ограничена, чтобы помещалось на маленьких экранах
-        # Считаем доступное пространство от низа кнопки до верха экрана минус отступы
-        available_height = Window.height - caller.y - dp(48)
-        max_height = min(dp(200), max(dp(100), available_height))
+        menu_width = dp(160)
+
+
+        max_height = min(dp(300), Window.height * 0.5)
 
         self._substance_menu = MDDropdownMenu(
             caller=caller,
             items=menu_items,
             width=menu_width,
-            position=position,
-            hor_growth=hor_growth,
-            ver_growth=ver_growth,
+            position="auto",
             max_height=max_height,
         )
         self._substance_menu.open()
@@ -589,56 +574,56 @@ class ReactionEditorScreen(Screen):
         """Добавляет вещество в смесь."""
         if hasattr(self, '_substance_menu') and self._substance_menu:
             self._substance_menu.dismiss()
-        
+
         if substance_key not in SUBSTANCES:
             self._show_message("Неизвестное вещество")
             return
-        
+
         if self._reaction_done:
             self._show_message("Сначала сбросьте результат")
             return
-        
+
         if len(self._added_substances) >= 3:
             self._show_message("Максимум 3 вещества")
             return
-        
+
         if substance_key in self._added_substances:
             self._show_message(f"{substance_key} уже добавлен")
             return
-        
+
         substance = SUBSTANCES[substance_key]
-        
-        # считаем смещение (компактнее для телефона)
+
+
         if self._current_atoms:
             max_x = max(a.x for a in self._current_atoms)
-            offset_x = max_x + 2.5  # уменьшили для компактности
+            offset_x = max_x + 2.5
         else:
             offset_x = 0.0
-        
-        # добавляем атомы
+
+
         base_idx = len(self._current_atoms)
-        new_group_indices = []  # индексы атомов новой молекулы
-        
+        new_group_indices = []
+
         for (element, x, y, z) in substance["atoms"]:
             new_atom = Atom(element=element, x=x + offset_x, y=y, z=z)
             self._current_atoms.append(new_atom)
             new_group_indices.append(len(self._current_atoms) - 1)
-        
-        # добавляем связи
+
+
         for (i, j) in substance["bonds"]:
             self._current_bonds.append((base_idx + i, base_idx + j))
             self._highlight_form.append(bond_key(base_idx + i, base_idx + j))
-        
-        # создаём группу для вращения этой молекулы
+
+
         self._molecule_groups.append(new_group_indices)
-        
+
         self._added_substances.append(substance_key)
-        
+
         self._update_viewer()
         self._update_info()
         self._show_message(f"+ {substance['name']}")
-        
-        # убираем подсветку
+
+
         def clear_highlight(*_):
             self._highlight_form = []
             self._update_viewer()
@@ -649,88 +634,147 @@ class ReactionEditorScreen(Screen):
         if len(self._added_substances) < 2:
             self._show_message("Добавьте минимум 2 вещества")
             return
-        
+
         if self._reaction_done:
             self._show_message("Реакция уже прошла. Сбросьте для новой.")
             return
-        
-        self._show_message("Смешиваем...")
-        
-        # проверяем известные реакции
-        substances_set = frozenset(self._added_substances)
-        known = KNOWN_REACTIONS_EDITOR.get(substances_set)
-        
-        if known:
-            self._run_known_reaction(known)
-        else:
-            self._run_unknown_reaction()
 
-    def _run_known_reaction(self, reaction_info: dict) -> None:
-        """Запускает известную реакцию."""
-        possible = reaction_info.get("possible", False)
-        min_temp = reaction_info.get("min_temp", -273)
-        description = reaction_info.get("description", "")
-        effect = reaction_info.get("effect", "none")
-        
-        if not possible:
-            self._show_reaction_result(
-                f"Реакция не происходит.\n\n{description}",
-                title="Нет реакции"
-            )
-            self._reaction_done = True
+        self._show_message("Анализирую реакцию...")
+
+
+        self._analyze_reaction_with_ai()
+
+    def _analyze_reaction_with_ai(self) -> None:
+        """Анализируем реакцию с помощью ИИ и показываем результат с анимацией."""
+        substances_str = " + ".join(self._added_substances)
+
+
+        prompt = (
+            f"{substances_str} при {self._temperature:.0f} C.\n"
+            f"Начни с: РЕАКЦИЯ: / СМЕШИВАНИЕ: / НЕВОЗМОЖНО:\n"
+            f"Затем: уравнение, продукты, наблюдения. Кратко, 3-4 предложения."
+        )
+
+        if not self.app._ai_engine:
+            self._show_message("ИИ недоступен. Подключите интернет или скачайте оффлайн-модель.")
             return
-        
-        if self._temperature < min_temp:
-            self._show_reaction_result(
-                f"Нужна температура выше {min_temp}°C.\n"
-                f"Сейчас: {self._temperature:.0f}°C\n\n"
-                f"Увеличьте температуру!",
-                title="Холодно!"
-            )
-            return
-        
-        # реакция идёт!
+
+        def work():
+            try:
+
+                answer = self.app._ai_engine.ask(prompt, verify=False, max_tokens=200)
+                answer_stripped = answer.strip()
+                answer_lower = answer_stripped.lower()
+
+
+                is_hallucination = False
+                words = answer_stripped.split()
+                if len(words) > 20:
+                    phrase_counts = {}
+                    for i in range(len(words) - 4):
+                        phrase = " ".join(words[i:i+5])
+                        phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+                    if any(count > 2 for count in phrase_counts.values()):
+                        is_hallucination = True
+
+
+                is_failed = is_hallucination or len(answer_stripped) < 20
+
+                if is_failed:
+
+                    Clock.schedule_once(
+                        lambda *_: self._show_ai_error(), 0
+                    )
+                    return
+
+
+                show_animation = False
+
+                if answer_lower.startswith("реакция:") or answer_lower.startswith("реакция "):
+                    title = "Химическая реакция"
+                    show_animation = True
+                    result_text = answer_stripped[8:].strip() if answer_lower.startswith("реакция:") else answer_stripped
+                elif answer_lower.startswith("смешивание:") or answer_lower.startswith("смешивание "):
+                    title = "Смешивание веществ"
+                    show_animation = True
+                    result_text = answer_stripped[11:].strip() if answer_lower.startswith("смешивание:") else answer_stripped
+                elif answer_lower.startswith("невозможно:") or answer_lower.startswith("невозможно "):
+                    title = "Реакция невозможна"
+                    show_animation = False
+                    result_text = answer_stripped[11:].strip() if answer_lower.startswith("невозможно:") else answer_stripped
+                else:
+
+                    if any(word in answer_lower for word in ["невозможн", "не реагируют", "не смешиваются", "опасно", "нельзя"]):
+                        title = "Реакция невозможна"
+                        show_animation = False
+                    elif any(word in answer_lower for word in ["->", "=", "образуется", "получается", "реагирует", "гидролиз", "окисление"]):
+                        title = "Химическая реакция"
+                        show_animation = True
+                    elif any(word in answer_lower for word in ["растворяется", "смешивается", "диссоциирует", "растворение"]):
+                        title = "Смешивание веществ"
+                        show_animation = True
+                    else:
+                        title = "Результат анализа"
+                        show_animation = True
+                    result_text = answer_stripped
+
+
+                if show_animation:
+                    Clock.schedule_once(lambda *_: self._run_reaction_animation(result_text, title), 0)
+                else:
+
+                    def show_no_anim(*_):
+                        self._reaction_done = True
+                        self._show_reaction_result(result_text, title=title)
+                    Clock.schedule_once(show_no_anim, 0)
+
+            except Exception as e:
+                Logger.exception(f"[ReactionEditor] AI error: {e}")
+                Clock.schedule_once(
+                    lambda *_: self._show_message("Ошибка ИИ. Проверьте подключение."), 0
+                )
+
+        self.app._executor.submit(work)
+
+    def _show_ai_error(self) -> None:
+        """Показывает ошибку анализа ИИ."""
         self._reaction_done = True
-        self._animate_reaction(reaction_info, effect)
+        self._show_reaction_result(
+            "Не удалось проанализировать эту комбинацию.\n\n"
+            "Попробуйте другие вещества.",
+            title="Ошибка анализа"
+        )
 
-    def _animate_reaction(self, reaction_info: dict, effect: str) -> None:
-        """Анимация реакции с эффектами."""
-        equation = reaction_info.get("equation", "")
-        products = reaction_info.get("products", "")
-        description = reaction_info.get("description", "")
-        
-        # сообщение об эффекте
-        effect_messages = {
-            "heat": "Выделяется тепло!",
-            "gas": "Выделяется газ!",
-            "smoke": "Образуется дым!",
-            "explosion": "ОСТОРОЖНО! Бурная реакция!",
-            "none": "Реакция идёт...",
-        }
-        self._show_message(effect_messages.get(effect, "Реакция идёт..."))
-        
-        # фаза 1: разрыв связей
-        if self._current_bonds:
-            num_to_break = max(1, len(self._current_bonds) // 3)
-            bonds_to_break = random.sample(self._current_bonds, min(num_to_break, len(self._current_bonds)))
-            self._highlight_break = [bond_key(b[0], b[1]) for b in bonds_to_break]
-            self._update_viewer()
-        
-        # фаза 2: удаление связей
+    def _run_reaction_animation(self, result_text: str, title: str) -> None:
+        """Запускает анимацию реакции и показывает результат."""
+        self._reaction_done = True
+
+        if not self._current_bonds:
+
+            self._show_reaction_result(result_text, title=title)
+            return
+
+        self._show_message("Реакция идёт...")
+
+
+        num_to_break = max(1, min(3, len(self._current_bonds) // 3))
+        bonds_to_break = random.sample(self._current_bonds, num_to_break)
+        self._highlight_break = [bond_key(b[0], b[1]) for b in bonds_to_break]
+        self._update_viewer()
+
+
         def phase2(*_):
-            for b in list(self._highlight_break):
-                bond = b if b in self._current_bonds else (b[1], b[0])
-                if bond in self._current_bonds:
-                    self._current_bonds.remove(bond)
-                elif (bond[1], bond[0]) in self._current_bonds:
-                    self._current_bonds.remove((bond[1], bond[0]))
-            
+            for b in bonds_to_break:
+                if b in self._current_bonds:
+                    self._current_bonds.remove(b)
+                elif (b[1], b[0]) in self._current_bonds:
+                    self._current_bonds.remove((b[1], b[0]))
             self._highlight_break = []
             self._update_viewer()
-        
-        Clock.schedule_once(phase2, 0.7)
-        
-        # фаза 3: образование новых связей
+
+        Clock.schedule_once(phase2, 0.8)
+
+
         def phase3(*_):
             new_bonds = []
             for i, atom_i in enumerate(self._current_atoms):
@@ -740,147 +784,25 @@ class ReactionEditorScreen(Screen):
                     bond = (min(i, j), max(i, j))
                     if bond in self._current_bonds:
                         continue
-                    
                     dist = ((atom_i.x - atom_j.x)**2 + (atom_i.y - atom_j.y)**2 + (atom_i.z - atom_j.z)**2) ** 0.5
-                    
-                    if dist < 2.8 and len(new_bonds) < 4:
+                    if dist < 2.8 and len(new_bonds) < 3:
                         self._current_bonds.append(bond)
                         new_bonds.append(bond)
-            
+
             self._highlight_form = [bond_key(b[0], b[1]) for b in new_bonds]
             self._update_viewer()
-        
-        Clock.schedule_once(phase3, 1.4)
-        
-        # фаза 4: результат
+
+        Clock.schedule_once(phase3, 1.5)
+
+
         def phase4(*_):
             self._highlight_form = []
             self._highlight_break = []
             self._update_viewer()
             self._update_info()
-            
-            result = f"Уравнение: {equation}\n\nПродукты: {products}\n\n{description}"
-            self._show_reaction_result(result, title="Реакция прошла!")
-        
-        Clock.schedule_once(phase4, 2.2)
+            self._show_reaction_result(result_text, title=title)
 
-    def _run_unknown_reaction(self) -> None:
-        """Спрашиваем ИИ о неизвестной реакции."""
-        substances_str = " + ".join(self._added_substances)
-        
-        prompt = (
-            f"Ты — учитель химии. Что произойдёт при смешивании: {substances_str} при {self._temperature:.0f}°C?\n\n"
-            f"СТРОГИЕ ПРАВИЛА:\n"
-            f"- Используй ТОЛЬКО реальные химические формулы (H2O, NaCl, H2SO4 и т.д.)\n"
-            f"- НЕ ПРИДУМЫВАЙ названия реакций (никаких 'реакция Иванова', 'метод Петрова')\n"
-            f"- Если не уверен — честно напиши 'Не могу определить результат'\n"
-            f"- Пиши только проверенные факты из школьного курса химии\n\n"
-            f"Ответь КРАТКО по пунктам:\n"
-            f"1. Реакция возможна? (ДА/НЕТ)\n"
-            f"2. Уравнение (только если ДА): используй формат A + B -> C + D\n"
-            f"3. Продукты: названия веществ на русском\n"
-            f"4. Эффект: тепло/газ/осадок/дым/нет\n"
-            f"5. Пояснение: 1-2 предложения\n\n"
-            f"Если реакция невозможна или ты не уверен — так и напиши, не выдумывай!"
-        )
-        
-        if not self.app._ai_engine:
-            self._show_message("ИИ недоступен")
-            return
-        
-        def work():
-            try:
-                answer = self.app._ai_engine.ask(prompt, verify=False)
-                
-                # проверка на галлюцинации и бред
-                answer_lower = answer.lower()
-                
-                # признаки галлюцинаций
-                hallucination_markers = [
-                    "зиммерман", "реакция иванова", "реакция петрова", "метод сидорова",
-                    "именная реакция", "открыта в", "назван в честь",
-                ]
-                has_hallucination = any(m in answer_lower for m in hallucination_markers)
-                
-                # проверка на бессмысленные "формулы" (кириллица в формуле = бред)
-                fake_formula_pattern = re.compile(r'[А-Яа-яЁё][а-яё]?\d*\s*[\+\-\>]')  # "Зм + 2Н4Кл"
-                has_fake_formula = bool(fake_formula_pattern.search(answer))
-                
-                # повторяющийся текст (признак зависания модели)
-                words = answer_lower.split()
-                if len(words) > 10:
-                    repeated = sum(1 for i in range(len(words) - 3) if words[i:i+3] == words[i+3:i+6])
-                    has_repetition = repeated > 2
-                else:
-                    has_repetition = False
-                
-                is_garbage = has_hallucination or has_fake_formula or has_repetition
-                
-                is_unknown = (
-                    is_garbage or
-                    "не знаю" in answer_lower or
-                    "недостаточно" in answer_lower or
-                    "неизвестно" in answer_lower or
-                    "не могу определить" in answer_lower or
-                    "не уверен" in answer_lower
-                )
-                
-                is_possible = (
-                    not is_unknown and
-                    ("да" in answer_lower[:50] or "возможна" in answer_lower or "->" in answer)
-                    and "невозможна" not in answer_lower[:100]
-                )
-                
-                def show_result(*_):
-                    self._reaction_done = True
-                    
-                    if is_garbage:
-                        self._show_reaction_result(
-                            "ИИ дал некорректный ответ.\n\n"
-                            "Эта комбинация веществ слишком сложная для автоматического анализа.\n"
-                            "Попробуйте смешать 2 вещества или выберите другую комбинацию.",
-                            title="Ошибка анализа"
-                        )
-                    elif is_unknown:
-                        self._show_reaction_result(
-                            "Не удалось определить результат.\n\n"
-                            "Попробуйте другие вещества.",
-                            title="Неизвестно"
-                        )
-                    elif is_possible:
-                        self._simple_animation()
-                        Clock.schedule_once(
-                            lambda *_: self._show_reaction_result(answer, title="Реакция возможна"),
-                            1.5
-                        )
-                    else:
-                        self._show_reaction_result(answer, title="Реакция невозможна")
-                
-                Clock.schedule_once(show_result, 0)
-            except Exception as e:
-                Logger.exception(f"[ReactionEditor] AI error: {e}")
-                Clock.schedule_once(lambda *_: self._show_message(f"Ошибка: {e}"), 0)
-        
-        self.app._executor.submit(work)
-
-    def _simple_animation(self) -> None:
-        """Простая анимация."""
-        if not self._current_bonds:
-            return
-        
-        num = min(2, len(self._current_bonds))
-        bonds = random.sample(self._current_bonds, num)
-        self._highlight_break = [bond_key(b[0], b[1]) for b in bonds]
-        self._update_viewer()
-        
-        def remove(*_):
-            for b in bonds:
-                if b in self._current_bonds:
-                    self._current_bonds.remove(b)
-            self._highlight_break = []
-            self._update_viewer()
-        
-        Clock.schedule_once(remove, 0.6)
+        Clock.schedule_once(phase4, 2.5)
 
     def _show_reaction_result(self, text: str, title: str = "Результат") -> None:
         from kivymd.uix.dialog import MDDialog
@@ -890,7 +812,7 @@ class ReactionEditorScreen(Screen):
             MDDialogButtonContainer,
         )
         from kivymd.uix.button import MDButton, MDButtonText
-        
+
         dialog = MDDialog(
             MDDialogHeadlineText(text=title),
             MDDialogSupportingText(text=text),
@@ -907,4 +829,4 @@ class ReactionEditorScreen(Screen):
     def reset_editor(self) -> None:
         """Сброс редактора к начальному состоянию."""
         self._reset_all()
-        self._clear_message()  # возвращаем стандартный заголовок
+        self._clear_message()

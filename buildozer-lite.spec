@@ -2,16 +2,16 @@
 title = Molecule Mentor
 package.name = moleculementor
 package.domain = org.moleculementor
-version = 0.1.0
+version = 0.2.0
 
 source.dir = .
-; LITE версия: модель ИИ скачивается при первом запуске (~1.9GB)
+; LITE версия: модель не включена в APK (скачивание после установки)
 ; Native библиотеки llama.cpp добавляются через android.add_libs_arm64_v8a
 source.include_exts = py,kv,png,jpg,jpeg,json,pdb,txt,md,ttf,otf,bin,db
 
-source.include_patterns = assets/**,kv/**,screens/**,utils/**,data/**,third_party/**,theme.py,main.py
-; LITE версия: исключаем модели (они скачаются при первом запуске) и .so файлы
-source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,assets/llama/*.so,data/models/**,assets/models/**
+source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/llama/**,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
+; LITE версия: исключаем встроенные модели
+source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,data/models/**,assets/models/**,third_party/llama.cpp/**
 
 icon.filename = assets/icons/app_icon.png
 presplash.filename = assets/icons/presplash.png
@@ -31,7 +31,7 @@ android.manifest = android_manifest.xml
 ; и доступны через System.loadLibrary() или dlopen()
 android.add_libs_arm64_v8a = assets/llama/*.so
 
-requirements = python3,kivy,numpy,pillow,requests,urllib3,pygments,docutils,pycparser,materialyoucolor,asynckivy,asyncgui,typing_extensions,https://github.com/kivymd/KivyMD/archive/master.zip
+requirements = python3,kivy,numpy,pillow,requests,urllib3,pygments,docutils,pycparser,materialyoucolor,asynckivy,asyncgui,typing_extensions,diskcache,jinja2,markupsafe,https://github.com/kivymd/KivyMD/archive/master.zip
 
 orientation = portrait
 fullscreen = 0
@@ -51,5 +51,4 @@ p4a.branch = master
 
 
 [buildozer]
-; LITE версия — модель скачивается при первом запуске
-; APK размер ~80-100MB (без модели 1.9GB)
+; LITE версия — без встроенной GGUF-модели
