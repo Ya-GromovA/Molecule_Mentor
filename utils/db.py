@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/utils/db.py
+
 from __future__ import annotations
 
 import sqlite3
@@ -20,7 +20,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    # ---- users (optional) ----
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -31,7 +31,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # ---- progress ----
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS progress (
@@ -47,7 +47,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # ---- quiz attempts (общие) ----
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS quiz_attempts (
@@ -61,7 +61,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # ---- chat sessions (таблица есть, но НЕ используем для MVP истории) ----
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -87,11 +87,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # =========================
-    # ===== Courses (SQLite) ===
-    # =========================
 
-    # курс (уровень: basic/advanced)
+
+
+
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS courses (
@@ -107,7 +107,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # раздел курса (ordering)
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS course_sections (
@@ -121,7 +121,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # тема (ordering)
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS course_topics (
@@ -136,7 +136,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # блоки контента темы (text/image/etc.)
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS topic_blocks (
@@ -150,7 +150,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # квиз по теме (варианты в JSON)
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS topic_quiz_questions (

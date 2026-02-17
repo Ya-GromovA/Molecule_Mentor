@@ -11,9 +11,9 @@ from typing import Any, List, Optional, Dict, Union
 from typing_extensions import TypedDict, NotRequired, Literal
 
 
-# NOTE: Defining this correctly using annotations seems to break pydantic validation.
-#       This is a workaround until we can figure out how to do this correctly
-# JsonType = Union[None, int, str, bool, List["JsonType"], Dict[str, "JsonType"]]
+
+
+
 JsonType = Union[None, int, str, bool, List[Any], Dict[str, Any]]
 
 
@@ -72,14 +72,14 @@ class ChatCompletionResponseFunctionCall(TypedDict):
 class ChatCompletionResponseMessage(TypedDict):
     content: Optional[str]
     tool_calls: NotRequired["ChatCompletionMessageToolCalls"]
-    role: Literal["assistant", "function"]  # NOTE: "function" may be incorrect here
-    function_call: NotRequired[ChatCompletionResponseFunctionCall]  # DEPRECATED
+    role: Literal["assistant", "function"]
+    function_call: NotRequired[ChatCompletionResponseFunctionCall]
 
 
 class ChatCompletionFunction(TypedDict):
     name: str
     description: NotRequired[str]
-    parameters: Dict[str, JsonType]  # TODO: make this more specific
+    parameters: Dict[str, JsonType]
 
 
 class ChatCompletionTopLogprobToken(TypedDict):
@@ -141,7 +141,7 @@ class ChatCompletionStreamResponseDelta(TypedDict):
     content: NotRequired[Optional[str]]
     function_call: NotRequired[
         Optional[ChatCompletionStreamResponseDeltaFunctionCall]
-    ]  # DEPRECATED
+    ]
     tool_calls: NotRequired[Optional[List[ChatCompletionMessageToolCallChunk]]]
     role: NotRequired[Optional[Literal["system", "user", "assistant", "tool"]]]
 
@@ -166,7 +166,7 @@ class CreateChatCompletionStreamResponse(TypedDict):
 class ChatCompletionFunctions(TypedDict):
     name: str
     description: NotRequired[str]
-    parameters: Dict[str, JsonType]  # TODO: make this more specific
+    parameters: Dict[str, JsonType]
 
 
 class ChatCompletionFunctionCallOption(TypedDict):
@@ -177,7 +177,7 @@ class ChatCompletionRequestResponseFormat(TypedDict):
     type: Literal["text", "json_object"]
     schema: NotRequired[
         JsonType
-    ]  # https://docs.endpoints.anyscale.com/guides/json_mode/
+    ]
 
 
 class ChatCompletionRequestMessageContentPartText(TypedDict):
@@ -236,7 +236,7 @@ class ChatCompletionRequestAssistantMessage(TypedDict):
     tool_calls: NotRequired[ChatCompletionMessageToolCalls]
     function_call: NotRequired[
         ChatCompletionRequestAssistantMessageFunctionCall
-    ]  # DEPRECATED
+    ]
 
 
 class ChatCompletionRequestToolMessage(TypedDict):
@@ -269,7 +269,7 @@ ChatCompletionRequestFunctionCall = Union[
     Literal["none", "auto"], ChatCompletionRequestFunctionCallOption
 ]
 
-ChatCompletionFunctionParameters = Dict[str, JsonType]  # TODO: make this more specific
+ChatCompletionFunctionParameters = Dict[str, JsonType]
 
 
 class ChatCompletionToolFunction(TypedDict):
@@ -297,8 +297,8 @@ ChatCompletionToolChoiceOption = Union[
 ]
 
 
-# NOTE: The following type names are not part of the OpenAI OpenAPI specification
-# and will be removed in a future major release.
+
+
 
 EmbeddingData = Embedding
 CompletionChunk = CreateCompletionResponse

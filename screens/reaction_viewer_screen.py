@@ -11,6 +11,7 @@ from kivy.uix.boxlayout import BoxLayout
 
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDButton, MDButtonText
+from kivymd.uix.button import MDIconButton
 from kivymd.uix.list import MDListItem, MDListItemHeadlineText, MDListItemSupportingText
 from kivymd.uix.scrollview import MDScrollView
 
@@ -24,10 +25,11 @@ from utils.visualizer_3d import Visualizer3D
 class _PlayerState:
     playing: bool = False
     frame_idx: int = 0
-    tick_ev: Optional[object] = None  # таймер проигрывания
+    tick_ev: Optional[object] = None
 
 
 class ReactionViewerScreen(BaseScreen):
+    """Просмотр реакции."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title = "Реакция"
@@ -43,6 +45,9 @@ class ReactionViewerScreen(BaseScreen):
         self._btn_play: Optional[MDButton] = None
         self._btn_play_text: Optional[MDButtonText] = None
 
+        self._fav_btn: Optional[MDIconButton] = None
+        self._reaction_id: str = ""
+
     def on_pre_enter(self, *args):
         super().on_pre_enter(*args)
         Clock.schedule_once(lambda *_: self._build(), 0)
@@ -51,8 +56,8 @@ class ReactionViewerScreen(BaseScreen):
     def on_pre_leave(self, *args):
         self._stop()
         return super().on_pre_leave(*args)
-        
-    # ---------- помощники для UI ----------
+
+
     def _make_btn(self, label: str, on_release, bg_rgba=None):
         btn = MDButton(
             style="filled",
@@ -66,14 +71,14 @@ class ReactionViewerScreen(BaseScreen):
         txt = MDButtonText(text=label, font_size=dp(16))
         btn.add_widget(txt)
         return btn, txt
-        
-    # ---------- геометрия ----------
+
+
     def _separate_molecules(self, atoms: List[Dict], bonds: List) -> Tuple[List[Dict], List[List[int]]]:
-        # раздвигаем молекулы, чтобы они не налезали друг на друга
+
         if not atoms:
             return atoms, []
         if not bonds:
-            # если связей нет, каждый атом отдельная группа
+
             return atoms, [[i] for i in range(len(atoms))]
 
         n = len(atoms)
@@ -87,7 +92,7 @@ class ReactionViewerScreen(BaseScreen):
                 adj[i].append(j)
                 adj[j].append(i)
 
-        # ищем компоненты связности
+
         seen = [False] * n
         comps: List[List[int]] = []
         for start in range(n):
@@ -105,12 +110,12 @@ class ReactionViewerScreen(BaseScreen):
                         stack.append(u)
             comps.append(comp)
 
-        # если группа одна, двигать не надо
+
         if len(comps) <= 1:
             return atoms, comps
 
         def _get(a, key: str, default=0.0):
-            # атомы могут быть dict или объектом
+
             if isinstance(a, dict):
                 return a.get(key, default)
             return getattr(a, key, default)
@@ -121,7 +126,7 @@ class ReactionViewerScreen(BaseScreen):
             zs = [float(_get(atoms[k], "z", 0.0)) for k in idxs]
             return min(xs), max(xs), min(ys), max(ys), min(zs), max(zs)
 
-        # сортируем слева направо, чтобы порядок был стабильный
+
         comp_meta = []
         for c in comps:
             x0, x1, y0, y1, z0, z1 = bbox(c)
@@ -131,31 +136,31 @@ class ReactionViewerScreen(BaseScreen):
 
         comp_meta.sort(key=lambda t: t[0])
 
-        # раскладываем молекулы по оси X
+
         shifts_x: Dict[int, float] = {}
-        shifts_y: Dict[int, float] = {}  # всегда 0
-        
+        shifts_y: Dict[int, float] = {}
+
         prev_right = None
-        
+
         for cx, width, comp, (x0, x1) in comp_meta:
             w = max(width, 0.5)
-            gap = max(0.3, w * 0.20)  # небольшой зазор
-            
+            gap = max(0.3, w * 0.20)
+
             if prev_right is None:
-                # первая молекула около нуля
+
                 shift_x = -cx
                 prev_right = x1 + shift_x
             else:
-                # следующую ставим правее
+
                 target_left = prev_right + gap
                 shift_x = target_left - x0
                 prev_right = x1 + shift_x
-            
+
             for k in comp:
                 shifts_x[k] = shift_x
-                shifts_y[k] = 0.0  # все на одной высоте
+                shifts_y[k] = 0.0
 
-        # применяем сдвиги (делаем копию)
+
         out = []
         AtomCls = atoms[0].__class__ if atoms else None
 
@@ -163,7 +168,7 @@ class ReactionViewerScreen(BaseScreen):
             sx = float(shifts_x.get(i, 0.0))
             sy = float(shifts_y.get(i, 0.0))
 
-            # dict атомы
+
             if isinstance(a, dict):
                 aa = dict(a)
                 aa["x"] = float(aa.get("x", 0.0)) + sx
@@ -171,7 +176,7 @@ class ReactionViewerScreen(BaseScreen):
                 out.append(aa)
                 continue
 
-            # обычный объект Atom
+
             try:
                 kwargs = {
                     "element": getattr(a, "element", None),
@@ -180,7 +185,7 @@ class ReactionViewerScreen(BaseScreen):
                     "z": float(getattr(a, "z", 0.0)),
                     "label": getattr(a, "label", None),
                 }
-                # если label=None, то убираем
+
                 if kwargs["label"] is None:
                     kwargs.pop("label", None)
 
@@ -193,7 +198,7 @@ class ReactionViewerScreen(BaseScreen):
                     pass
                 out.append(a)
 
-        # центрируем сцену по X
+
         def _get_x(a):
             if isinstance(a, dict):
                 return float(a.get("x", 0.0))
@@ -212,7 +217,7 @@ class ReactionViewerScreen(BaseScreen):
                     except Exception:
                         pass
 
-        # возвращаем атомы и группы
+
         sorted_groups = [comp for (_, _, comp, _) in comp_meta]
         return out, sorted_groups
 
@@ -222,22 +227,33 @@ class ReactionViewerScreen(BaseScreen):
 
         root = BoxLayout(orientation="vertical", padding=dp(6), spacing=dp(4))
 
-        # заголовок сверху
+
         from kivy.metrics import sp
-        
+
+        header_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
+
         self._lbl_name = MDLabel(
             text="",
             bold=True,
             theme_text_color="Custom",
             text_color=app.mm_text,
             halign="left",
-            size_hint_y=None,
-            height=dp(24),
-            font_size=sp(16),  # масштабируемый шрифт
+            valign="middle",
+            size_hint_x=1,
+            font_size=sp(16),
             shorten=True,
             shorten_from="right",
-            text_size=(None, None),
         )
+
+        self._fav_btn = MDIconButton(
+            icon="star-outline",
+            theme_icon_color="Custom",
+            icon_color=app.mm_text,
+        )
+        self._fav_btn.bind(on_release=lambda *_: self._toggle_favorite())
+
+        header_row.add_widget(self._lbl_name)
+        header_row.add_widget(self._fav_btn)
         self._lbl_eq = MDLabel(
             text="",
             theme_text_color="Custom",
@@ -245,12 +261,12 @@ class ReactionViewerScreen(BaseScreen):
             halign="left",
             size_hint_y=None,
             height=dp(18),
-            font_size=sp(12),  # масштабируемый шрифт
+            font_size=sp(12),
             shorten=True,
             shorten_from="right",
         )
-        
-        # ширина текста под ширину родителя
+
+
         def _update_text_size(*_):
             if self._lbl_name:
                 self._lbl_name.text_size = (root.width - dp(20), None)
@@ -258,21 +274,21 @@ class ReactionViewerScreen(BaseScreen):
                 self._lbl_eq.text_size = (root.width - dp(20), None)
         root.bind(width=_update_text_size)
 
-        root.add_widget(self._lbl_name)
+        root.add_widget(header_row)
         root.add_widget(self._lbl_eq)
 
-        # тело: 3D сверху, кнопки снизу
+
         body = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(4))
 
-        # 3D область
+
         host = BoxLayout(orientation="vertical", size_hint=(1, 0.75))
         self._viz = Visualizer3D(size_hint=(1, 1))
         host.add_widget(self._viz)
 
-        # нижняя панель с кнопками и шагами
+
         bottom = BoxLayout(orientation="vertical", size_hint=(1, 0.25), spacing=dp(4))
 
-        # кнопки управления
+
         controls = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46), spacing=dp(6))
 
         bg_ctrl = app.mm_surface2
@@ -280,7 +296,7 @@ class ReactionViewerScreen(BaseScreen):
 
         btn_first, _ = self._make_btn("|<", lambda *_: self._go_first(), bg_ctrl)
         btn_prev, _ = self._make_btn("<", lambda *_: self._go_prev(), bg_ctrl)
-        self._btn_play, self._btn_play_text = self._make_btn("Play", lambda *_: self._toggle_play(), bg_play)
+        self._btn_play, self._btn_play_text = self._make_btn("Пуск", lambda *_: self._toggle_play(), bg_play)
         btn_next, _ = self._make_btn(">", lambda *_: self._go_next(), bg_ctrl)
         btn_last, _ = self._make_btn(">|", lambda *_: self._go_last(), bg_ctrl)
 
@@ -288,9 +304,9 @@ class ReactionViewerScreen(BaseScreen):
             b.size_hint_x = 1
             controls.add_widget(b)
 
-        # блок с описанием шага
+
         from kivy.metrics import sp
-        
+
         step_box = BoxLayout(orientation="vertical", size_hint=(1, 1), spacing=dp(2))
 
         self._lbl_step_title = MDLabel(
@@ -301,7 +317,7 @@ class ReactionViewerScreen(BaseScreen):
             halign="left",
             size_hint_y=None,
             height=dp(20),
-            font_size=sp(14),  # масштабируемый шрифт
+            font_size=sp(14),
         )
 
         self._lbl_step_desc = MDLabel(
@@ -310,12 +326,12 @@ class ReactionViewerScreen(BaseScreen):
             text_color=app.mm_text2,
             halign="left",
             valign="top",
-            font_size=sp(13),  # масштабируемый шрифт
+            font_size=sp(13),
             text_size=(0, None),
             size_hint_y=None,
         )
-        
-        # высота по содержимому
+
+
         self._lbl_step_desc.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1]))
 
         desc_scroll = MDScrollView(do_scroll_x=False, bar_width=dp(4))
@@ -332,10 +348,10 @@ class ReactionViewerScreen(BaseScreen):
 
         root.add_widget(body)
 
-        
+
         self.add_widget(root)
 
-        # обновляем text_size при ресайзе
+
         def _fix_text_size(*_):
             if self._lbl_step_desc:
                 self._lbl_step_desc.text_size = (root.width - dp(20), None)
@@ -350,6 +366,8 @@ class ReactionViewerScreen(BaseScreen):
             app.toast("Не передан reaction_id")
             return
 
+        self._reaction_id = str(reaction_id)
+
         self._repo = ReactionRepo(app.reactions_dir)
 
         try:
@@ -359,12 +377,47 @@ class ReactionViewerScreen(BaseScreen):
             app.toast(f"Ошибка загрузки реакции: {e}")
             return
 
-        # сброс состояния плеера
+
         self._stop()
         self._state.frame_idx = 0
 
         self._render_static()
         self._render_frame()
+
+        self._sync_fav_icon()
+
+    def _favorites_path(self) -> str:
+        try:
+            from pathlib import Path
+            app = self.get_app()
+            return str(Path(app.user_data_dir).resolve() / "favorites.json")
+        except Exception:
+            return "favorites.json"
+
+    def _sync_fav_icon(self) -> None:
+        if not self._fav_btn:
+            return
+        try:
+            from utils.favorites_store import load_favorites
+            fav = load_favorites(self._favorites_path())
+            self._fav_btn.icon = "star" if self._reaction_id in fav.reactions else "star-outline"
+        except Exception:
+            self._fav_btn.icon = "star-outline"
+
+    def _toggle_favorite(self) -> None:
+        if not self._reaction_id:
+            return
+        try:
+            from utils.favorites_store import toggle_reaction
+            state = toggle_reaction(self._favorites_path(), self._reaction_id)
+            if self._fav_btn:
+                self._fav_btn.icon = "star" if state else "star-outline"
+            self.get_app().toast("Добавлено в избранное" if state else "Убрано из избранного")
+        except Exception:
+            try:
+                self.get_app().toast("Не удалось обновить избранное")
+            except Exception:
+                pass
 
     def _render_static(self) -> None:
         if not self._rxn:
@@ -495,11 +548,11 @@ class ReactionViewerScreen(BaseScreen):
             bonds=fr.bonds,
             highlight_break=fr.highlight_break,
             highlight_form=fr.highlight_form,
-            groups=groups,  # группы для независимого вращения
+            groups=groups,
         )
         self._render_step()
 
-    # --- управление проигрыванием ---
+
     def _stop(self) -> None:
         self._state.playing = False
         if self._state.tick_ev is not None:
@@ -509,7 +562,7 @@ class ReactionViewerScreen(BaseScreen):
                 pass
         self._state.tick_ev = None
         if self._btn_play_text:
-           self._btn_play_text.text = "Play"
+            self._btn_play_text.text = "Пуск"
 
     def _toggle_play(self) -> None:
         if not self._rxn or not self._rxn.frames:
@@ -520,7 +573,7 @@ class ReactionViewerScreen(BaseScreen):
 
         self._state.playing = True
         if self._btn_play_text:
-           self._btn_play_text.text = "Pause"
+            self._btn_play_text.text = "Пауза"
 
         fps = max(1, int(self._rxn.meta.fps or 12))
         dt = 1.0 / float(fps)

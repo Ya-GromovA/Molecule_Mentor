@@ -2,11 +2,6 @@ from __future__ import annotations
 
 """
 Экран прохождения викторины.
-Поддерживает:
-- Режим по категориям (органика, неорганика, молекулы и т.д.)
-- Режим по курсу (как раньше)
-- Прогресс-бар
-- Статистику
 """
 
 import json
@@ -52,31 +47,31 @@ class OptionRow(ButtonBehavior, BoxLayout):
         self.height = dp(52)
         self.padding = [dp(14), dp(6), dp(14), dp(6)]
         self.spacing = dp(10)
-        
+
         self._selected = selected
         self._on_select = on_select
         self._text = text
         self._index = index
-        self._review_state: Optional[str] = None  # None, "correct", "wrong", "missed"
+        self._review_state: Optional[str] = None
         self._disabled = False
-        
-        # Буквы для вариантов
+
+
         self._letters = ["А", "Б", "В", "Г", "Д", "Е"]
-        
-        # цвета
+
+
         self._bg_normal = (0.12, 0.14, 0.22, 1)
         self._bg_selected = (0.2, 0.35, 0.55, 1)
         self._bg_correct = (0.15, 0.5, 0.25, 1)
         self._bg_wrong = (0.55, 0.15, 0.15, 1)
         self._bg_missed = (0.2, 0.45, 0.3, 1)
-        
+
         with self.canvas.before:
             Color(*self._bg_normal)
             self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(10)])
-        
+
         self.bind(pos=self._update_rect, size=self._update_rect)
-        
-        # Буква варианта
+
+
         letter = self._letters[index] if index < len(self._letters) else str(index + 1)
         self._letter_label = MDLabel(
             text=letter,
@@ -89,8 +84,8 @@ class OptionRow(ButtonBehavior, BoxLayout):
             size_hint=(None, None),
             size=(dp(28), dp(28)),
         )
-        
-        # Текст варианта
+
+
         self._text_label = MDLabel(
             text=text,
             halign="left",
@@ -99,10 +94,10 @@ class OptionRow(ButtonBehavior, BoxLayout):
             text_color=(1, 1, 1, 1),
             font_size=sp(14),
         )
-        
+
         self.add_widget(self._letter_label)
         self.add_widget(self._text_label)
-        
+
         self._update_visuals()
 
     def _update_rect(self, *_):
@@ -125,8 +120,8 @@ class OptionRow(ButtonBehavior, BoxLayout):
             else:
                 Color(*self._bg_normal)
             self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(10)])
-        
-        # Обновляем цвет буквы
+
+
         if self._selected or self._review_state:
             self._letter_label.text_color = (1, 1, 1, 1)
         else:
@@ -136,12 +131,12 @@ class OptionRow(ButtonBehavior, BoxLayout):
         if self._selected != selected:
             self._selected = selected
             self._update_visuals()
-    
+
     def set_review_state(self, state: Optional[str]):
         """Устанавливает состояние проверки: 'correct', 'wrong', 'missed' или None."""
         self._review_state = state
         self._update_visuals()
-    
+
     def set_clickable(self, clickable: bool):
         """Включает/отключает возможность выбора."""
         self._disabled = not clickable
@@ -152,8 +147,8 @@ class OptionRow(ButtonBehavior, BoxLayout):
 
 
 class QuizScreen(BaseScreen):
-    """Экран прохождения викторины."""
-    
+    """Экран викторины или теста."""
+
     def on_pre_enter(self, *args):
         app = self.get_app()
         if app.nav_state.get("quiz_category"):
@@ -174,12 +169,12 @@ class QuizScreen(BaseScreen):
         """Загружает вопросы и строит интерфейс."""
         app = self.get_app()
         self.clear_widgets()
-        
-        # Определяем режим: категория, раздел или курс
+
+
         category = app.nav_state.get("quiz_category")
         section_id = app.nav_state.get("section_id")
         course_id = app.nav_state.get("course_id")
-        
+
         if category:
             self._load_category_quiz(category)
         elif section_id:
@@ -188,34 +183,34 @@ class QuizScreen(BaseScreen):
             self._load_course_quiz(course_id)
         else:
             self._show_error("Не выбрана викторина")
-    
+
     def _load_category_quiz(self, category: str):
         """Загружает викторину по категории."""
         try:
             from data.quiz_questions import get_questions_by_category
-            
+
             raw_questions = get_questions_by_category(category)
             if not raw_questions:
                 self._show_error(f"Нет вопросов для категории: {category}")
                 return
-            
-            # Перемешиваем вопросы
+
+
             random.shuffle(raw_questions)
-            
-            # Ограничиваем количество
+
+
             app = self.get_app()
             max_count = app.nav_state.get("quiz_count", 10)
             raw_questions = raw_questions[:max_count]
-            
-            # Преобразуем в Question
+
+
             self._questions: List[Question] = []
             for q in raw_questions:
-                # Перемешиваем варианты ответов
+
                 options = list(q["options"])
                 correct_text = options[q["correct"]]
                 random.shuffle(options)
                 new_correct = options.index(correct_text)
-                
+
                 self._questions.append(Question(
                     text=q["q"],
                     options=options,
@@ -223,31 +218,31 @@ class QuizScreen(BaseScreen):
                     explanation=q.get("explanation", ""),
                     difficulty=q.get("difficulty", 1),
                 ))
-            
+
             title = app.nav_state.get("quiz_title", "Викторина")
             self._quiz_title = title
-            self._quiz_id = None  # Нет ID в базе для категорийных викторин
+            self._quiz_id = None
             self._course_id = None
-            
+
             self._build_quiz_ui()
-            
+
         except ImportError as e:
             self._show_error(f"Ошибка загрузки вопросов: {e}")
-    
+
     def _load_section_quiz(self, section_id: int):
         """Загружает тест по разделу курса."""
         app = self.get_app()
         section_title = app.nav_state.get("section_title", "Раздел")
-        
+
         with self._conn() as c:
-            # Ищем тест для данного раздела
+
             quiz = c.execute(
                 "select id, title from mm_quizzes where section_id=? limit 1",
                 (int(section_id),),
             ).fetchone()
 
             if not quiz:
-                # Если теста в БД нет, загружаем из quiz_questions.py
+
                 self._load_section_quiz_from_file(section_id, section_title)
                 return
 
@@ -264,11 +259,11 @@ class QuizScreen(BaseScreen):
         self._questions: List[Question] = []
         for r in q_rows:
             opts = json.loads(r["options_json"])
-            # Перемешиваем варианты
+
             correct_text = opts[int(r["correct_index"])]
             random.shuffle(opts)
             new_correct = opts.index(correct_text)
-            
+
             self._questions.append(Question(
                 text=str(r["q"]),
                 options=[str(x) for x in opts],
@@ -279,34 +274,34 @@ class QuizScreen(BaseScreen):
         if not self._questions:
             self._show_error("В тесте нет вопросов.")
             return
-        
-        # Перемешиваем вопросы
+
+
         random.shuffle(self._questions)
-        
+
         self._build_quiz_ui()
-    
+
     def _load_section_quiz_from_file(self, section_id: int, section_title: str):
         """Загружает тест раздела из файла quiz_questions.py (если нет в БД)."""
         try:
             from data.quiz_questions import get_questions_by_section
-            
+
             raw_questions = get_questions_by_section(section_id)
             if not raw_questions:
                 self._show_error(f"Нет вопросов для раздела: {section_title}")
                 return
-            
-            # Перемешиваем вопросы
+
+
             random.shuffle(raw_questions)
-            
-            # Преобразуем в Question
+
+
             self._questions: List[Question] = []
             for q in raw_questions:
-                # Перемешиваем варианты ответов
+
                 options = list(q["options"])
                 correct_text = options[q["correct"]]
                 random.shuffle(options)
                 new_correct = options.index(correct_text)
-                
+
                 self._questions.append(Question(
                     text=q["q"],
                     options=options,
@@ -314,23 +309,23 @@ class QuizScreen(BaseScreen):
                     explanation=q.get("explanation", ""),
                     difficulty=q.get("difficulty", 1),
                 ))
-            
+
             self._quiz_title = f"Тест: {section_title}"
-            self._quiz_id = None  # Нет ID в базе
+            self._quiz_id = None
             self._course_id = None
-            
+
             self._build_quiz_ui()
-            
+
         except ImportError as e:
             self._show_error(f"Ошибка загрузки вопросов: {e}")
-    
+
     def _load_course_quiz(self, course_id: int):
         """Загружает тест по курсу (итоговый тест курса, без привязки к разделу)."""
         with self._conn() as c:
-            # Берём тест курса без привязки к разделу (section_id IS NULL) и не заглушку (id > 0)
+
             quiz = c.execute(
-                """SELECT id, title FROM mm_quizzes 
-                   WHERE course_id=? AND section_id IS NULL AND id > 0 
+                """SELECT id, title FROM mm_quizzes
+                   WHERE course_id=? AND section_id IS NULL AND id > 0
                    ORDER BY id LIMIT 1""",
                 (int(course_id),),
             ).fetchone()
@@ -362,16 +357,16 @@ class QuizScreen(BaseScreen):
         if not self._questions:
             self._show_error("В тесте нет вопросов.")
             return
-        
+
         self._build_quiz_ui()
-    
+
     def _show_error(self, message: str):
         """Показывает сообщение об ошибке."""
         app = self.get_app()
         root = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(16))
-        
+
         root.add_widget(Widget(size_hint_y=0.3))
-        
+
         error_label = MDLabel(
             text=message,
             halign="center",
@@ -380,7 +375,7 @@ class QuizScreen(BaseScreen):
             font_size=sp(16),
         )
         root.add_widget(error_label)
-        
+
         back_btn = MDButton(
             style="filled",
             size_hint=(None, None),
@@ -391,26 +386,26 @@ class QuizScreen(BaseScreen):
         )
         back_btn.add_widget(MDButtonText(text="Назад"))
         root.add_widget(back_btn)
-        
+
         root.add_widget(Widget(size_hint_y=0.5))
-        
+
         self.add_widget(root)
-    
+
     def _build_quiz_ui(self):
         """Строит интерфейс викторины."""
         app = self.get_app()
-        
+
         self._current_index = 0
         self._answers: Dict[int, int] = {}
         self._submitted = False
         self._start_time = time.time()
-        
+
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-        
-        # Верхняя панель: заголовок + прогресс
+
+
         header = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(70), spacing=dp(6))
-        
-        # Заголовок
+
+
         title_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
         title_label = MDLabel(
             text=self._quiz_title,
@@ -421,8 +416,8 @@ class QuizScreen(BaseScreen):
             font_size=sp(16),
         )
         title_row.add_widget(title_label)
-        
-        # Счётчик вопросов
+
+
         self._counter_label = MDLabel(
             text=f"1/{len(self._questions)}",
             halign="right",
@@ -434,24 +429,24 @@ class QuizScreen(BaseScreen):
         )
         title_row.add_widget(self._counter_label)
         header.add_widget(title_row)
-        
-        # Прогресс-бар
+
+
         self._progress = MDLinearProgressIndicator(
             value=0,
             size_hint_y=None,
             height=dp(6),
         )
         header.add_widget(self._progress)
-        
+
         root.add_widget(header)
-        
-        # Контейнер для вопроса
+
+
         self._question_container = BoxLayout(orientation="vertical")
         root.add_widget(self._question_container)
-        
-        # Кнопки навигации
+
+
         nav_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50), spacing=dp(12))
-        
+
         self._prev_btn = MDButton(
             style="outlined",
             size_hint_x=0.3,
@@ -459,7 +454,7 @@ class QuizScreen(BaseScreen):
         )
         self._prev_btn.add_widget(MDButtonText(text="Назад"))
         nav_row.add_widget(self._prev_btn)
-        
+
         self._next_btn = MDButton(
             style="filled",
             size_hint_x=0.7,
@@ -469,49 +464,49 @@ class QuizScreen(BaseScreen):
         self._next_btn_text = MDButtonText(text="Далее")
         self._next_btn.add_widget(self._next_btn_text)
         nav_row.add_widget(self._next_btn)
-        
+
         root.add_widget(nav_row)
-        
+
         self.add_widget(root)
-        
-        # Показываем первый вопрос
+
+
         self._show_question(0)
-    
+
     def _show_question(self, index: int):
         """Показывает вопрос по индексу."""
         if index < 0 or index >= len(self._questions):
             return
-        
+
         self._current_index = index
         q = self._questions[index]
         app = self.get_app()
-        
-        # Обновляем счётчик и прогресс
+
+
         self._counter_label.text = f"{index + 1}/{len(self._questions)}"
         self._progress.value = (index + 1) / len(self._questions)
-        
-        # Обновляем кнопки
+
+
         self._prev_btn.disabled = (index == 0)
         self._prev_btn.opacity = 0.5 if index == 0 else 1
-        
+
         is_last = (index == len(self._questions) - 1)
         self._next_btn_text.text = "Завершить" if is_last else "Далее"
-        
-        # Очищаем контейнер
+
+
         self._question_container.clear_widgets()
-        
-        # Текст вопроса
+
+
         question_box = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
             padding=[dp(12), dp(16)],
         )
         question_box.bind(minimum_height=question_box.setter('height'))
-        
-        # Индикатор сложности
+
+
         difficulty_text = ["Легко", "Средне", "Сложно"][min(q.difficulty - 1, 2)]
         difficulty_color = [(0.3, 0.8, 0.4, 1), (0.9, 0.7, 0.2, 1), (0.9, 0.35, 0.3, 1)][min(q.difficulty - 1, 2)]
-        
+
         diff_label = MDLabel(
             text=difficulty_text,
             halign="left",
@@ -522,7 +517,7 @@ class QuizScreen(BaseScreen):
             height=dp(18),
         )
         question_box.add_widget(diff_label)
-        
+
         q_label = MDLabel(
             text=q.text,
             halign="left",
@@ -533,10 +528,10 @@ class QuizScreen(BaseScreen):
         )
         q_label.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1] + dp(10)))
         question_box.add_widget(q_label)
-        
+
         self._question_container.add_widget(question_box)
-        
-        # Варианты ответов
+
+
         scroll = MDScrollView(size_hint_y=1)
         options_box = BoxLayout(
             orientation="vertical",
@@ -545,10 +540,10 @@ class QuizScreen(BaseScreen):
             padding=[0, dp(8)],
         )
         options_box.bind(minimum_height=options_box.setter('height'))
-        
+
         self._option_rows: List[OptionRow] = []
         selected = self._answers.get(index)
-        
+
         for i, opt in enumerate(q.options):
             row = OptionRow(
                 text=opt,
@@ -558,79 +553,79 @@ class QuizScreen(BaseScreen):
             )
             self._option_rows.append(row)
             options_box.add_widget(row)
-        
+
         scroll.add_widget(options_box)
         self._question_container.add_widget(scroll)
-    
+
     def _on_option_select(self, option_index: int):
         """Обработчик выбора варианта."""
         if self._submitted:
             return
-        
+
         self._answers[self._current_index] = option_index
-        
-        # Обновляем отображение
+
+
         for i, row in enumerate(self._option_rows):
             row.set_selected(i == option_index)
-    
+
     def _prev_question(self):
         """Переход к предыдущему вопросу."""
         if self._current_index > 0:
             self._show_question(self._current_index - 1)
-    
+
     def _next_question(self):
         """Переход к следующему вопросу или завершение."""
-        # Проверяем, что ответ выбран
+
         if self._current_index not in self._answers:
             self.get_app().toast("Выберите ответ")
             return
-        
+
         if self._current_index < len(self._questions) - 1:
             self._show_question(self._current_index + 1)
         else:
             self._submit()
-    
+
     def _submit(self):
         """Завершение викторины и показ результатов."""
         if len(self._answers) < len(self._questions):
-            # Находим первый неотвеченный вопрос
+
             for i in range(len(self._questions)):
                 if i not in self._answers:
                     self._show_question(i)
                     self.get_app().toast(f"Ответьте на вопрос {i + 1}")
                     return
-        
+
         self._submitted = True
         elapsed = time.time() - self._start_time
-        
-        # Подсчёт результатов
+
+
         score = 0
         for idx, q in enumerate(self._questions):
             if self._answers.get(idx) == q.correct:
                 score += 1
-        
+
         total = len(self._questions)
         percent = round(score * 100.0 / total, 1)
-        
-        # Сохраняем в базу всегда
+
+
         self._save_result(score, total, percent)
-        
-        # Показываем результаты
+
+
         self._show_results(score, total, percent, elapsed)
-    
+
     def _save_result(self, score: int, total: int, percent: float):
         """Сохраняет результат в базу данных."""
         try:
             with self._conn() as c:
-                # Для викторин по категориям используем quiz_id=0
+
                 quiz_id = self._quiz_id if self._quiz_id else 0
-                
+
                 c.execute(
                     "insert into mm_quiz_attempts(quiz_id, finished_at, score, total, percent) "
                     "values (?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?, ?, ?)",
                     (quiz_id, score, total, percent),
                 )
-                
+
                 if self._course_id:
                     row = c.execute(
                         "select best_percent, attempts_count from mm_course_progress where course_id=?",
@@ -651,22 +646,22 @@ class QuizScreen(BaseScreen):
                             "values (?, ?, ?, ?)",
                             (self._course_id, percent, percent, 1),
                         )
-                
+
                 c.commit()
         except Exception as e:
             print(f"[QUIZ] Ошибка сохранения результата: {e}")
-    
+
     def _show_results(self, score: int, total: int, percent: float, elapsed: float):
         """Показывает экран результатов."""
         app = self.get_app()
         self.clear_widgets()
-        
-        # Используем ScrollView чтобы ничего не вылезало
+
+
         scroll = MDScrollView()
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12), size_hint_y=None)
         root.bind(minimum_height=root.setter('height'))
-        
-        # Заголовок
+
+
         title = MDLabel(
             text="Результаты",
             bold=True,
@@ -678,8 +673,8 @@ class QuizScreen(BaseScreen):
             height=dp(36),
         )
         root.add_widget(title)
-        
-        # Оценка (без emoji - они могут отображаться некорректно)
+
+
         if percent >= 90:
             grade = "Отлично!"
             grade_color = (0.3, 0.85, 0.4, 1)
@@ -692,7 +687,7 @@ class QuizScreen(BaseScreen):
         else:
             grade = "Нужно повторить"
             grade_color = (0.9, 0.4, 0.35, 1)
-        
+
         grade_label = MDLabel(
             text=grade,
             bold=True,
@@ -704,8 +699,8 @@ class QuizScreen(BaseScreen):
             height=dp(40),
         )
         root.add_widget(grade_label)
-        
-        # Статистика
+
+
         stats_box = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
@@ -713,15 +708,15 @@ class QuizScreen(BaseScreen):
             spacing=dp(8),
             padding=[dp(20), dp(16)],
         )
-        
-        # Добавляем фон для статистики
+
+
         with stats_box.canvas.before:
             Color(0.1, 0.12, 0.18, 1)
             stats_box._bg = RoundedRectangle(pos=stats_box.pos, size=stats_box.size, radius=[dp(12)])
         stats_box.bind(pos=lambda *_: setattr(stats_box._bg, 'pos', stats_box.pos),
                        size=lambda *_: setattr(stats_box._bg, 'size', stats_box.size))
-        
-        # Результат
+
+
         result_label = MDLabel(
             text=f"Правильных ответов: {score} из {total}",
             halign="center",
@@ -732,8 +727,8 @@ class QuizScreen(BaseScreen):
             height=dp(28),
         )
         stats_box.add_widget(result_label)
-        
-        # Процент
+
+
         percent_label = MDLabel(
             text=f"{percent:.0f}%",
             bold=True,
@@ -745,8 +740,8 @@ class QuizScreen(BaseScreen):
             height=dp(48),
         )
         stats_box.add_widget(percent_label)
-        
-        # Время
+
+
         minutes = int(elapsed // 60)
         seconds = int(elapsed % 60)
         time_text = f"{minutes} мин {seconds} сек" if minutes > 0 else f"{seconds} сек"
@@ -760,21 +755,21 @@ class QuizScreen(BaseScreen):
             height=dp(24),
         )
         stats_box.add_widget(time_label)
-        
+
         root.add_widget(stats_box)
-        
-        # Отступ
+
+
         root.add_widget(Widget(size_hint_y=None, height=dp(16)))
-        
-        # Кнопки в контейнере с фиксированным размером
+
+
         buttons_box = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
             height=dp(160),
             spacing=dp(10),
         )
-        
-        # Кнопка "Посмотреть ответы"
+
+
         review_btn = MDButton(
             style="outlined",
             size_hint=(None, None),
@@ -784,8 +779,8 @@ class QuizScreen(BaseScreen):
         )
         review_btn.add_widget(MDButtonText(text="Посмотреть ответы"))
         buttons_box.add_widget(review_btn)
-        
-        # Кнопка "Пройти снова"
+
+
         retry_btn = MDButton(
             style="filled",
             size_hint=(None, None),
@@ -796,8 +791,8 @@ class QuizScreen(BaseScreen):
         )
         retry_btn.add_widget(MDButtonText(text="Пройти снова"))
         buttons_box.add_widget(retry_btn)
-        
-        # Кнопка "К викторинам"
+
+
         back_btn = MDButton(
             style="text",
             size_hint=(None, None),
@@ -807,23 +802,23 @@ class QuizScreen(BaseScreen):
         )
         back_btn.add_widget(MDButtonText(text="К викторинам"))
         buttons_box.add_widget(back_btn)
-        
+
         root.add_widget(buttons_box)
-        
-        # Нижний отступ
+
+
         root.add_widget(Widget(size_hint_y=None, height=dp(20)))
-        
+
         scroll.add_widget(root)
         self.add_widget(scroll)
-    
+
     def _show_review(self):
         """Показывает разбор ответов."""
         app = self.get_app()
         self.clear_widgets()
-        
+
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-        
-        # Заголовок
+
+
         header = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44))
         title = MDLabel(
             text="Разбор ответов",
@@ -834,18 +829,18 @@ class QuizScreen(BaseScreen):
             font_size=sp(18),
         )
         header.add_widget(title)
-        
+
         close_btn = MDButton(
             style="text",
             size_hint_x=None,
             width=dp(80),
-            on_release=lambda *_: self._load(),  # Перезагружаем quiz
+            on_release=lambda *_: self._load(),
         )
         close_btn.add_widget(MDButtonText(text="Закрыть"))
         header.add_widget(close_btn)
         root.add_widget(header)
-        
-        # Список вопросов с ответами
+
+
         scroll = MDScrollView()
         review_box = BoxLayout(
             orientation="vertical",
@@ -854,12 +849,12 @@ class QuizScreen(BaseScreen):
             padding=[0, dp(8), 0, dp(60)],
         )
         review_box.bind(minimum_height=review_box.setter('height'))
-        
+
         for idx, q in enumerate(self._questions):
             user_answer = self._answers.get(idx)
             is_correct = (user_answer == q.correct)
-            
-            # Карточка вопроса
+
+
             card = BoxLayout(
                 orientation="vertical",
                 size_hint_y=None,
@@ -867,19 +862,19 @@ class QuizScreen(BaseScreen):
                 spacing=dp(6),
             )
             card.bind(minimum_height=card.setter('height'))
-            
-            # Фон карточки
+
+
             bg_color = (0.12, 0.18, 0.14, 1) if is_correct else (0.18, 0.12, 0.12, 1)
             with card.canvas.before:
                 Color(*bg_color)
                 card._bg = RoundedRectangle(pos=card.pos, size=card.size, radius=[dp(10)])
             card.bind(pos=lambda inst, val: setattr(inst._bg, 'pos', val),
                      size=lambda inst, val: setattr(inst._bg, 'size', val))
-            
-            # Номер и статус
+
+
             status_text = "✓" if is_correct else "✗"
             status_color = (0.4, 0.85, 0.5, 1) if is_correct else (0.9, 0.4, 0.4, 1)
-            
+
             q_header = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(24))
             q_num = MDLabel(
                 text=f"Вопрос {idx + 1}",
@@ -889,7 +884,7 @@ class QuizScreen(BaseScreen):
                 font_size=sp(13),
             )
             q_header.add_widget(q_num)
-            
+
             q_status = MDLabel(
                 text=status_text,
                 bold=True,
@@ -902,8 +897,8 @@ class QuizScreen(BaseScreen):
             )
             q_header.add_widget(q_status)
             card.add_widget(q_header)
-            
-            # Текст вопроса
+
+
             q_text = MDLabel(
                 text=q.text,
                 theme_text_color="Custom",
@@ -913,8 +908,8 @@ class QuizScreen(BaseScreen):
             )
             q_text.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1] + dp(4)))
             card.add_widget(q_text)
-            
-            # Ответ пользователя
+
+
             if user_answer is not None:
                 user_text = q.options[user_answer]
                 answer_color = (0.4, 0.85, 0.5, 1) if is_correct else (0.9, 0.5, 0.5, 1)
@@ -927,8 +922,8 @@ class QuizScreen(BaseScreen):
                     height=dp(22),
                 )
                 card.add_widget(user_label)
-            
-            # Правильный ответ (если неверно)
+
+
             if not is_correct:
                 correct_label = MDLabel(
                     text=f"Правильный ответ: {q.options[q.correct]}",
@@ -939,8 +934,8 @@ class QuizScreen(BaseScreen):
                     height=dp(22),
                 )
                 card.add_widget(correct_label)
-            
-            # Пояснение
+
+
             if q.explanation:
                 expl_label = MDLabel(
                     text=q.explanation,
@@ -951,27 +946,27 @@ class QuizScreen(BaseScreen):
                 )
                 expl_label.bind(texture_size=lambda inst, val: setattr(inst, 'height', val[1] + dp(4)))
                 card.add_widget(expl_label)
-            
+
             review_box.add_widget(card)
-        
+
         scroll.add_widget(review_box)
         root.add_widget(scroll)
-        
+
         self.add_widget(root)
-    
+
     def _retry(self):
         """Начинает викторину заново."""
         self._answers = {}
         self._submitted = False
         self._start_time = time.time()
-        
-        # Перемешиваем вопросы и варианты заново
+
+
         random.shuffle(self._questions)
         for q in self._questions:
             options = list(q.options)
             correct_text = options[q.correct]
             random.shuffle(options)
-            # Нужно обновить correct индекс - но Question frozen, так что пересоздаём
-        
-        # Перезагружаем
+
+
+
         self._load()

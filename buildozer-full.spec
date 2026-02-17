@@ -9,9 +9,9 @@ source.dir = .
 ; Native библиотеки llama.cpp добавляются через android.add_libs_arm64_v8a
 source.include_exts = py,kv,png,jpg,jpeg,json,pdb,txt,md,ttf,otf,bin,db,gguf
 
-source.include_patterns = assets/**,kv/**,screens/**,utils/**,data/**,third_party/**,theme.py,main.py
-; FULL версия: исключаем только временные файлы и .so файлы (модели ВКЛЮЧЕНЫ)
-source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,assets/llama/*.so,data/models/**
+source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/models/**,assets/llama/**,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
+; FULL версия: модель включена в APK, исключаем только лишнее
+source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,data/models/**,third_party/llama.cpp/**
 source.exclude_dirs =
 
 icon.filename = assets/icons/app_icon.png
@@ -32,7 +32,7 @@ android.manifest = android_manifest.xml
 ; и доступны через System.loadLibrary() или dlopen()
 android.add_libs_arm64_v8a = assets/llama/*.so
 
-requirements = python3,kivy,numpy,pillow,requests,urllib3,pygments,docutils,pycparser,materialyoucolor,asynckivy,asyncgui,typing_extensions,https://github.com/kivymd/KivyMD/archive/master.zip
+requirements = python3,kivy,numpy,pillow,requests,urllib3,pygments,docutils,pycparser,materialyoucolor,asynckivy,asyncgui,typing_extensions,diskcache,jinja2,markupsafe,https://github.com/kivymd/KivyMD/archive/master.zip
 
 orientation = portrait
 fullscreen = 0

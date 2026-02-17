@@ -1,4 +1,4 @@
-# /home/ulyashka_88/molecule-mentor/screens/ai_assistant_screen.py
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 
 
 class AIAssistantScreen(BaseScreen):
+    """Чат с помощником по химии."""
     _send_text: Optional[MDButtonText] = None
     _prev_softinput_mode: Optional[str] = None
     _base_padding: float = 0
@@ -82,7 +83,7 @@ class AIAssistantScreen(BaseScreen):
         )
         self._content = content
 
-        # область с сообщениями
+
         self._scroll = MDScrollView(do_scroll_x=False)
 
         self._messages = BoxLayout(
@@ -97,7 +98,7 @@ class AIAssistantScreen(BaseScreen):
         content.add_widget(self._scroll)
         root.add_widget(content)
 
-        # строка ввода снизу
+
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=self._row_height, spacing=dp(10))
         row.size_hint = (1, None)
         row.pos_hint = {"x": 0, "y": 0}
@@ -111,7 +112,7 @@ class AIAssistantScreen(BaseScreen):
             height=dp(44),
         )
 
-        # фикс цвета ввода (иначе KivyMD сбрасывает цвет)
+
         harden_mdtextfield_colors(
             self._input,
             text_rgba=tuple(getattr(app, "mm_text", (1, 1, 1, 1))),
@@ -153,23 +154,23 @@ class AIAssistantScreen(BaseScreen):
             self._last_keyboard_height = height
             self._apply_keyboard_offset(height)
 
-    # ---------------- помощники для UI ----------------
+
 
     def _make_bubble(self, role: str, text: str) -> MDCard:
-        # цвет текста
+
         text_main = (1, 1, 1, 1)
 
-        # тёмные пузырьки, разные для юзера и ИИ
+
         if role == "user":
-            card_bg = (0.18, 0.20, 0.30, 1)   # тёмно-синий
+            card_bg = (0.18, 0.20, 0.30, 1)
         else:
-            card_bg = (0.14, 0.16, 0.22, 1)   # ещё темнее для ИИ
+            card_bg = (0.14, 0.16, 0.22, 1)
 
         prefix = "Ты: " if role == "user" else "ИИ: "
 
         card = MDCard(
             md_bg_color=card_bg,
-            theme_bg_color="Custom",  # важно, иначе может стать светлым
+            theme_bg_color="Custom",
             radius=[dp(14)] * 4,
             padding=(dp(12), dp(10), dp(12), dp(10)),
             size_hint_x=1,
@@ -185,7 +186,7 @@ class AIAssistantScreen(BaseScreen):
             size_hint_y=None,
         )
 
-        # чтобы текст нормально переносился
+
         def _reflow(*_):
             lbl.text_size = (card.width - dp(24), None)
             lbl.texture_update()
@@ -200,11 +201,11 @@ class AIAssistantScreen(BaseScreen):
 
     def _scroll_to_bottom(self):
         try:
-            self._scroll.scroll_y = 0  # вниз
+            self._scroll.scroll_y = 0
         except Exception:
             pass
 
-    # ---------------- состояние ----------------
+
 
     def _sync_history(self, scroll_to_bottom: bool = False):
         app = self.get_app()
@@ -219,7 +220,7 @@ class AIAssistantScreen(BaseScreen):
         if scroll_to_bottom:
             Clock.schedule_once(lambda *_: self._scroll_to_bottom(), 0)
 
-    # ---------------- действия ----------------
+
 
     def _send_message(self):
         app = self.get_app()
@@ -233,7 +234,7 @@ class AIAssistantScreen(BaseScreen):
         if not hasattr(app, "ai_history"):
             app.ai_history = []
 
-        # 1) добавляем в историю для UI
+
         app.ai_history.append(("user", text))
         app.ai_history.append(("assistant", "Думаю..."))
         self._sync_history(scroll_to_bottom=True)
@@ -245,8 +246,8 @@ class AIAssistantScreen(BaseScreen):
             self._send.disabled = False
             return
 
-        # 2) в движок отправляем историю до текущего сообщения
-        # последние два элемента: ("user", text), ("assistant","Думаю...")
+
+
         history_pairs = app.ai_history[:-2]
 
         history_for_engine = [
@@ -264,7 +265,7 @@ class AIAssistantScreen(BaseScreen):
                 log.exception("AI request failed: %s", e)
                 ans = f"Ошибка: {e}"
 
-            # заменяем "Думаю..." на реальный ответ
+
             if app.ai_history and app.ai_history[-1] == ("assistant", "Думаю..."):
                 app.ai_history[-1] = ("assistant", ans)
             else:

@@ -39,11 +39,11 @@
 
 | Компонент | Технология |
 |-----------|------------|
-| UI Framework | Kivy 2.3.1 + KivyMD 2.0.1 |
+| UI Framework | Kivy 2.3.1 + KivyMD (master snapshot, см. requirements.txt) |
 | 3D визуализация | py3Dmol, OpenGL |
 | Химия | RDKit |
 | ИИ (онлайн) | HuggingFace Inference API |
-| ИИ (офлайн) | llama-cpp-python 0.2.90 |
+| ИИ (офлайн) | llama-cpp-python (wheel 0.2.80, см. requirements.txt) |
 | База данных | SQLite |
 | Сборка Android | Buildozer (python-for-android) |
 

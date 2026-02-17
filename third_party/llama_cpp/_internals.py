@@ -25,7 +25,7 @@ from ._utils import suppress_stdout_stderr
 import llama_cpp.llama_cpp as llama_cpp
 
 
-# Python wrappers over llama.h structs
+
 
 
 class LlamaModel:
@@ -64,7 +64,7 @@ class LlamaModel:
 
         self.model = model
         self.vocab = vocab
-        self.sampler = None  # LlamaModel doesn't use samplers, but some cleanup code expects this attribute
+        self.sampler = None
 
         def free_model():
             if self.model is None:
@@ -76,7 +76,7 @@ class LlamaModel:
 
     def close(self):
         if self.sampler is not None:
-            # NOTE: Must remove custom samplers before free or llama.cpp will try to free them
+
             for i, _ in reversed(self.custom_samplers):
                 llama_cpp.llama_sampler_chain_remove(self.sampler, i)
             self.custom_samplers.clear()
@@ -114,7 +114,7 @@ class LlamaModel:
     def get_tensor(self, name: str) -> ctypes.c_void_p:
         raise NotImplementedError("get_tensor is not implemented in llama.cpp")
 
-    # Vocab
+
 
     def token_get_text(self, token: int) -> str:
         return llama_cpp.llama_vocab_get_text(self.vocab, token).decode("utf-8")
@@ -125,7 +125,7 @@ class LlamaModel:
     def token_get_attr(self, token: int) -> int:
         return llama_cpp.llama_vocab_get_attr(self.vocab, token)
 
-    # Special tokens
+
 
     def token_bos(self) -> int:
         return llama_cpp.llama_vocab_bos(self.vocab)
@@ -160,7 +160,7 @@ class LlamaModel:
     def add_eos_token(self) -> bool:
         return llama_cpp.llama_vocab_get_add_eos(self.vocab)
 
-    # Tokenization
+
 
     def tokenize(self, text: bytes, add_bos: bool, special: bool):
         n_ctx = self.n_ctx_train()
@@ -195,22 +195,22 @@ class LlamaModel:
             )
             assert n <= size
             output += bytes(buffer[:n])
-        # NOTE: Llama1 models automatically added a space at the start of the prompt
-        # this line removes a leading space if the first token is a beginning of sentence token
+
+
         return (
             output[1:]
             if len(tokens) > 0 and tokens[0] == self.token_bos() and output[0:1] == b" "
             else output
         )
 
-    # Extra
+
     def metadata(self) -> Dict[str, str]:
         metadata: Dict[str, str] = {}
         buffer_size = 1024
         buffer = ctypes.create_string_buffer(buffer_size)
-        # zero the buffer
+
         buffer.value = b"\0" * buffer_size
-        # iterate over model keys
+
         for i in range(llama_cpp.llama_model_meta_count(self.model)):
             nbytes = llama_cpp.llama_model_meta_key_by_index(
                 self.model, i, buffer, buffer_size
@@ -264,7 +264,7 @@ class LlamaContext:
 
         self.ctx = ctx
         self.memory = llama_cpp.llama_get_memory(self.ctx)
-        self.sampler = None  # LlamaContext doesn't manage samplers directly, but some cleanup code expects this attribute
+        self.sampler = None
 
         def free_ctx():
             if self.ctx is None:
@@ -310,13 +310,13 @@ class LlamaContext:
     def get_state_size(self) -> int:
         return llama_cpp.llama_state_get_size(self.ctx)
 
-    # TODO: copy_state_data
 
-    # TODO: set_state_data
 
-    # TODO: llama_load_session_file
 
-    # TODO: llama_save_session_file
+
+
+
+
 
     def decode(self, batch: LlamaBatch):
         return_code = llama_cpp.llama_decode(
@@ -352,7 +352,7 @@ class LlamaContext:
     def get_embeddings_seq(self, seq_id: int):
         return llama_cpp.llama_get_embeddings_seq(self.ctx, seq_id)
 
-    # Sampling functions - deprecated, use LlamaSampler instead
+
 
     def set_rng_seed(self, seed: int):
         raise NotImplementedError("set_rng_seed is deprecated, use LlamaSampler instead")
@@ -416,7 +416,7 @@ class LlamaContext:
     def sample_token(self, candidates: "_LlamaTokenDataArray") -> int:
         raise NotImplementedError("sample_token is deprecated, use LlamaSampler instead")
 
-    # Grammar
+
     def grammar_accept_token(self, grammar: LlamaGrammar, token: int):
         raise NotImplementedError("grammar_accept_token is deprecated, use LlamaSampler instead")
 
@@ -426,7 +426,7 @@ class LlamaContext:
     def print_timings(self):
         llama_cpp.llama_perf_context_print(self.ctx)
 
-    # Utility functions
+
     @staticmethod
     def default_params():
         """Get the default llama_context_params."""
@@ -449,7 +449,7 @@ class LlamaBatch:
             raise ValueError("Failed to create llama_batch")
 
         self.batch = batch
-        self.sampler = None  # LlamaBatch doesn't use samplers, but some cleanup code expects this attribute
+        self.sampler = None
 
         def free_batch():
             if self.batch is None:
@@ -510,9 +510,9 @@ class LlamaTokenDataArray:
             size=self.n_vocab,
             sorted=False,
         )
-        self.default_candidates_data_id = np.arange(self.n_vocab, dtype=np.intc)  # type: ignore
+        self.default_candidates_data_id = np.arange(self.n_vocab, dtype=np.intc)
         self.default_candidates_data_p = np.zeros(self.n_vocab, dtype=np.single)
-        self.sampler = None  # LlamaTokenDataArray doesn't use samplers, but some cleanup code expects this attribute
+        self.sampler = None
 
     def copy_logits(self, logits: npt.NDArray[np.single]):
         self.candidates_data.id[:] = self.default_candidates_data_id
@@ -522,7 +522,7 @@ class LlamaTokenDataArray:
         self.candidates.size = self.n_vocab
 
 
-# Embedding functions
+
 
 
 def normalize_embedding(embedding):
@@ -532,7 +532,7 @@ def normalize_embedding(embedding):
     return [v / norm for v in embedding]
 
 
-# Python wrappers over common/sampling structs
+
 
 
 @dataclass
@@ -567,7 +567,7 @@ class LlamaSamplingContext:
     params: LlamaSamplingParams = field(default_factory=LlamaSamplingParams)
     mirostat_mu: ctypes.c_float = field(default_factory=ctypes.c_float)
     grammar: Optional[LlamaGrammar] = None
-    # NOTE: Missing parsed_grammar
+
     prev: list[int] = field(default_factory=list)
     cur: list[llama_cpp.llama_token_data] = field(default_factory=list)
 
@@ -601,7 +601,7 @@ class LlamaSamplingContext:
         idx: int = 0,
         logits_array: Optional[npt.NDArray[np.single]] = None,
     ):
-        # This method is deprecated in favor of using LlamaSampler directly
+
         raise NotImplementedError("LlamaSamplingContext.sample is deprecated, use LlamaSampler instead")
 
     def accept(self, ctx_main: LlamaContext, id: int, apply_grammar: bool):
@@ -650,7 +650,7 @@ class LlamaSampler:
 
         def free_sampler():
             if self.sampler is not None:
-                # NOTE: Must remove custom samplers before free or llama.cpp will try to free them
+
                 for i, _ in reversed(self.custom_samplers):
                     llama_cpp.llama_sampler_chain_remove(self.sampler, i)
                 llama_cpp.llama_sampler_free(self.sampler)
@@ -723,20 +723,20 @@ class LlamaSampler:
         llama_cpp.llama_sampler_chain_add(self.sampler, sampler)
 
     def add_grammar_lazy_patterns(
-        self, 
-        model: LlamaModel, 
+        self,
+        model: LlamaModel,
         grammar: LlamaGrammar,
         trigger_patterns: List[str],
         trigger_tokens: List[int]
     ):
-        # Convert patterns to C array
+
         pattern_ptrs = (ctypes.c_char_p * len(trigger_patterns))()
         for i, pattern in enumerate(trigger_patterns):
             pattern_ptrs[i] = pattern.encode("utf-8")
-        
-        # Convert tokens to C array
+
+
         token_array = (llama_cpp.llama_token * len(trigger_tokens))(*trigger_tokens)
-        
+
         sampler = llama_cpp.llama_sampler_init_grammar_lazy_patterns(
             model.vocab,
             grammar._grammar.encode("utf-8"),
@@ -773,11 +773,11 @@ class LlamaSampler:
         dry_penalty_last_n: int,
         seq_breakers: List[str]
     ):
-        # Convert seq_breakers to C array
+
         breaker_ptrs = (ctypes.c_char_p * len(seq_breakers))()
         for i, breaker in enumerate(seq_breakers):
             breaker_ptrs[i] = breaker.encode("utf-8")
-        
+
         sampler = llama_cpp.llama_sampler_init_dry(
             model.vocab,
             n_ctx_train,
@@ -791,16 +791,16 @@ class LlamaSampler:
         llama_cpp.llama_sampler_chain_add(self.sampler, sampler)
 
     def add_logit_bias(
-        self, 
-        n_vocab: int, 
+        self,
+        n_vocab: int,
         logit_bias: Dict[int, float]
     ):
-        # Convert logit_bias dict to C array
+
         bias_array = (llama_cpp.llama_logit_bias * len(logit_bias))()
         for i, (token, bias) in enumerate(logit_bias.items()):
             bias_array[i].token = token
             bias_array[i].bias = bias
-        
+
         sampler = llama_cpp.llama_sampler_init_logit_bias(
             n_vocab,
             len(logit_bias),
@@ -818,7 +818,7 @@ class LlamaSampler:
         custom_sampler = CustomSampler(apply_func)
         sampler = custom_sampler.get_sampler()
         llama_cpp.llama_sampler_chain_add(self.sampler, sampler)
-        # NOTE: Must remove custom samplers before free or llama.cpp will try to free them
+
         self.custom_samplers.append(
             (llama_cpp.llama_sampler_chain_n(self.sampler) - 1, custom_sampler)
         )
@@ -836,17 +836,17 @@ class LlamaSampler:
         llama_cpp.llama_sampler_reset(self.sampler)
 
     def clone(self):
-        # NOTE: Custom samplers cannot be cloned due to Python callback limitations
+
         if self.custom_samplers:
             raise NotImplementedError("Cannot clone LlamaSampler that contains custom samplers")
-        
+
         cloned_sampler = llama_cpp.llama_sampler_clone(self.sampler)
-        # Create a new wrapper around the cloned sampler
+
         new_sampler = LlamaSampler.__new__(LlamaSampler)
         new_sampler.sampler = cloned_sampler
         new_sampler.custom_samplers = []
         new_sampler._exit_stack = ExitStack()
-        
+
         def free_sampler():
             if new_sampler.sampler is not None:
                 llama_cpp.llama_sampler_free(new_sampler.sampler)

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from kivy.clock import Clock
+from kivy.animation import Animation
 from kivy.logger import Logger
 from kivy.metrics import dp
 from kivy.graphics import Color, Line
@@ -29,6 +30,7 @@ class MoleculeItem:
     formula: str
     mass_g_mol: Optional[float]
     description: str = ""
+    category: str = ""
 
 
 _ATOMIC_WEIGHTS: Dict[str, float] = {
@@ -44,8 +46,8 @@ _ATOMIC_WEIGHTS: Dict[str, float] = {
     "K": 39.098,
 }
 
-# key -> (ru_name, description)
-# Список отсортирован по русскому названию (алфавиту)
+
+
 _MOLECULE_DATA: Dict[str, tuple] = {
     "adrenaline": (
         "Адреналин",
@@ -61,7 +63,7 @@ _MOLECULE_DATA: Dict[str, tuple] = {
     ),
     "nitrogen": (
         "Азот",
-        "Двухатомный газ, составляет 78% атмосферы Земли. Химически инертен из-за прочной тройной связи N≡N. Жидкий азот используется как хладагент (−196°C)."
+        "Двухатомный газ, составляет 78% атмосферы Земли. Химически инертен из-за прочной тройной связи N#N. Жидкий азот используется как хладагент (-196 C)."
     ),
     "nitric_acid": (
         "Азотная кислота",
@@ -77,7 +79,7 @@ _MOLECULE_DATA: Dict[str, tuple] = {
     ),
     "acetylene": (
         "Ацетилен",
-        "Простейший алкин с тройной связью C≡C. Бесцветный газ, горит ярким пламенем (до 3000°C). Используется для сварки и резки металлов."
+        "Простейший алкин с тройной связью C#C. Бесцветный газ, горит ярким пламенем (до 3000 C). Используется для сварки и резки металлов."
     ),
     "acetone": (
         "Ацетон",
@@ -273,25 +275,136 @@ _MOLECULE_DATA: Dict[str, tuple] = {
     ),
 }
 
-# для обратной совместимости
+
+_BIO_KEYS = {
+    "glucose",
+    "glycine",
+    "alanine",
+    "glycerol",
+    "urea",
+    "cholesterol",
+    "vitamin_c",
+    "caffeine",
+    "nicotine",
+    "aspirin",
+    "adrenaline",
+    "dopamine",
+    "serotonin",
+}
+
+_INORG_KEYS = {
+    "water",
+    "hydrogen",
+    "oxygen",
+    "nitrogen",
+    "ozone",
+    "hydrogen_peroxide",
+    "co2",
+    "carbon_monoxide",
+    "ammonia",
+    "hcl",
+    "nacl",
+    "naoh",
+    "sulfur_dioxide",
+    "sulfuric_acid",
+    "nitric_acid",
+    "hydrogen_sulfide",
+    "hydrogen_cyanide",
+    "phosphine",
+}
+
+
+def _category_for_key(key: str) -> str:
+    k = (key or "").strip().lower()
+    if not k:
+        return ""
+    if k in _BIO_KEYS:
+        return "Биомолекулы"
+    if k in _INORG_KEYS:
+        return "Неорганика"
+    return "Органика"
+
+
 _NAME_MAP: Dict[str, str] = {k: v[0] for k, v in _MOLECULE_DATA.items()}
 
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
 
 
+def _norm_el_symbol(raw: str) -> Optional[str]:
+    s = (raw or "").strip()
+    if not s:
+        return None
+
+
+    s = s[:2]
+    s = s[0].upper() + (s[1:].lower() if len(s) > 1 else "")
+    if _ELEMENT_RE.match(s):
+        return s
+    return None
+
+
 def _extract_element_from_pdb_line(line: str) -> Optional[str]:
     if len(line) >= 78:
-        el = line[76:78].strip()
-        if el and _ELEMENT_RE.match(el):
+        el = _norm_el_symbol(line[76:78])
+        if el:
             return el
 
     parts = line.split()
     if parts:
-        last = parts[-1].strip()
-        if _ELEMENT_RE.match(last):
+        last = _norm_el_symbol(parts[-1])
+        if last:
             return last
 
     return None
+
+
+_SUBSCRIPT_MAP = str.maketrans({
+    "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+    "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+})
+
+
+def _sanitize_text_for_ui(text: str) -> str:
+    """Убираем символы"""
+    if not text:
+        return ""
+
+
+    repl = {
+        "→": "->",
+        "⇒": "->",
+        "↔": "<->",
+        "⇌": "<->",
+        "−": "-",
+        "–": "-",
+        "—": "-",
+        "≡": "#",
+        "π": "пи",
+        "°": " град ",
+        "×": "x",
+        "·": "*",
+        "•": "*",
+        "…": "...",
+        "«": '"',
+        "»": '"',
+        "“": '"',
+        "”": '"',
+        "’": "'",
+        "‘": "'",
+    }
+    for a, b in repl.items():
+        text = text.replace(a, b)
+
+
+    text = text.translate(_SUBSCRIPT_MAP)
+
+
+    allowed_chars = r"\x00-\x7F\u0400-\u04FF\s.,;:!?(){}\"'/\\|+<>=\-\[\]_#"
+    text = re.sub(r"[^" + allowed_chars + r"]", "", text)
+
+
+    text = re.sub(r"[ \t]{2,}", " ", text).strip()
+    return text
 
 
 def _counts_from_pdb(pdb_path: Path) -> Dict[str, int]:
@@ -330,6 +443,107 @@ def _formula_hill(counts: Dict[str, int]) -> str:
     return "".join(parts)
 
 
+_METALS_FIRST = [
+    "Li",
+    "Na",
+    "K",
+    "Mg",
+    "Ca",
+    "Al",
+    "Fe",
+    "Cu",
+    "Zn",
+    "Ag",
+    "Au",
+    "Hg",
+    "Pb",
+    "Sn",
+]
+
+_HYDRIDES_ELEM_FIRST = {"N", "P", "Si", "B"}
+
+
+def _formula_inorganic_pretty(counts: Dict[str, int]) -> str:
+    """Формула для неорганики в более привычном порядке.
+    """
+
+    if not counts:
+        return "N/A"
+
+    def fmt(el: str, n: int) -> str:
+        return f"{el}{n if n != 1 else ''}"
+
+    els = set(counts.keys())
+
+
+    if len(els) == 1:
+        el = next(iter(els))
+        return fmt(el, int(counts.get(el, 1)))
+
+    metals = [m for m in _METALS_FIRST if m in counts]
+    is_metal = set(metals)
+
+
+    if els.issubset({"H", "O"}):
+        order = ["H", "O"]
+        return "".join(fmt(e, counts[e]) for e in order if e in counts)
+
+    if "H" in els:
+        others = [e for e in els if e != "H"]
+
+
+        if "O" in els and any(m in els for m in is_metal):
+
+            metal = next((m for m in _METALS_FIRST if m in counts), None)
+            order = [metal, "O", "H"] if metal else ["O", "H"]
+            return "".join(fmt(e, counts[e]) for e in order if e and e in counts)
+
+
+        if "O" in els and len(others) == 2:
+            x = next((e for e in others if e != "O"), None)
+            if x:
+                order = ["H", x, "O"]
+                return "".join(fmt(e, counts[e]) for e in order if e in counts)
+
+
+        if len(others) == 1:
+            x = others[0]
+            if x in _HYDRIDES_ELEM_FIRST:
+                order = [x, "H"]
+            else:
+                order = ["H", x]
+            return "".join(fmt(e, counts[e]) for e in order if e in counts)
+
+
+        rest = [e for e in counts.keys() if e not in is_metal and e != "H"]
+        if "O" in rest and len(rest) > 1:
+            rest_wo = sorted([e for e in rest if e != "O"])
+            rest = rest_wo + ["O"]
+        else:
+            rest = sorted(rest)
+        order = ["H"] + metals + rest
+        return "".join(fmt(e, counts[e]) for e in order if e in counts)
+
+
+    rest = [e for e in counts.keys() if e not in is_metal]
+    if "O" in rest and len(rest) > 1:
+        rest_wo = sorted([e for e in rest if e != "O"])
+        rest = rest_wo + ["O"]
+    else:
+        rest = sorted(rest)
+    order = metals + rest
+    return "".join(fmt(e, counts[e]) for e in order if e in counts)
+
+
+def _formula_for_display(counts: Dict[str, int]) -> str:
+
+    if not counts:
+        return "N/A"
+    if "C" in counts:
+        return _formula_hill(counts)
+    return _formula_inorganic_pretty(counts)
+
+
 def _mass_from_counts(counts: Dict[str, int], pdb_name: str) -> Optional[float]:
     if not counts:
         return None
@@ -344,11 +558,6 @@ def _mass_from_counts(counts: Dict[str, int], pdb_name: str) -> Optional[float]:
 
 
 class MoleculeCard(MDCard):
-    """
-    Без ButtonBehavior/RectangularRippleBehavior (чтобы не ловить MRO).
-    Акцент при тапе — меняем фон вручную.
-    Рамка — через canvas.after (стабильно на всех версиях).
-    """
 
     def __init__(self, on_open=None, border_rgba=(1, 1, 1, 0.16), pressed_delta=0.08, **kwargs):
         super().__init__(**kwargs)
@@ -357,7 +566,7 @@ class MoleculeCard(MDCard):
         self._normal_bg = list(getattr(self, "md_bg_color", (0.10, 0.11, 0.14, 1)))
         self._pressed_bg = self._make_pressed(self._normal_bg, pressed_delta)
 
-        # рамка
+
         self._border_rgba = border_rgba
         with self.canvas.after:
             self._border_color = Color(*self._border_rgba)
@@ -365,40 +574,72 @@ class MoleculeCard(MDCard):
 
         self.bind(pos=self._update_border, size=self._update_border)
 
+
+        self._tap_uid = None
+        self._tap_start = (0.0, 0.0)
+        self._tap_moved = False
+
     @staticmethod
     def _make_pressed(rgba, delta: float):
         r, g, b, a = rgba
         return [min(1.0, r + delta), min(1.0, g + delta), min(1.0, b + delta), a]
 
     def _update_border(self, *_):
-        # radius должен совпадать с card.radius
+
         rad = 18
         self._border_line.rounded_rectangle = [self.x, self.y, self.width, self.height, rad]
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
+
             self.md_bg_color = self._pressed_bg
-            return True
+            self._tap_uid = getattr(touch, "uid", None)
+            self._tap_start = tuple(touch.pos)
+            self._tap_moved = False
         return super().on_touch_down(touch)
 
+    def on_touch_move(self, touch):
+        if self._tap_uid is not None and getattr(touch, "uid", None) == self._tap_uid:
+
+            dx = float(touch.x - self._tap_start[0])
+            dy = float(touch.y - self._tap_start[1])
+            if (dx * dx + dy * dy) ** 0.5 > dp(12):
+                self._tap_moved = True
+                self.md_bg_color = self._normal_bg
+            grab = getattr(touch, "grab_current", None)
+            if grab is not None and grab is not self:
+                self._tap_moved = True
+                self.md_bg_color = self._normal_bg
+        return super().on_touch_move(touch)
+
     def on_touch_up(self, touch):
+        uid = getattr(touch, "uid", None)
+        is_our_tap = self._tap_uid is not None and uid == self._tap_uid
+
         was_inside = self.collide_point(*touch.pos)
         self.md_bg_color = self._normal_bg
-        if was_inside and self._on_open:
+        self._tap_uid = None
+
+        if is_our_tap and (not self._tap_moved) and was_inside and self._on_open:
             try:
                 self._on_open()
             except Exception as e:
                 Logger.exception(f"[MoleculeCard] open failed: {e}")
             return True
+
         return super().on_touch_up(touch)
 
 
 class MoleculesScreen(Screen):
+    """Список молекул."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._all: List[MoleculeItem] = []
         self._filtered: List[MoleculeItem] = []
         self._loaded = False
+
+        self._query = ""
+        self._active_filter = "all"
 
     @property
     def app(self):
@@ -409,9 +650,70 @@ class MoleculesScreen(Screen):
         if not self._loaded:
             Clock.schedule_once(lambda *_: self._load_and_render(), 0)
 
-        # KivyMD 2.x: иногда текст в MDTextField становится тёмным
-        # фикс для Desktop/Android
+
+
         Clock.schedule_once(lambda *_: self._harden_search_field_colors(), 0)
+
+
+        Clock.schedule_once(lambda *_: self._sync_filter_buttons(), 0)
+
+    def _favorites_path(self) -> str:
+        try:
+            return str(Path(self.app.user_data_dir).resolve() / "favorites.json")
+        except Exception:
+            return str(Path("favorites.json").resolve())
+
+    def _favorite_keys(self) -> set[str]:
+        try:
+            from utils.favorites_store import load_favorites
+            fav = load_favorites(self._favorites_path())
+            return set(fav.molecules)
+        except Exception:
+            return set()
+
+    def set_filter(self, key: str) -> None:
+        k = (key or "all").strip().lower()
+        if k not in {"all", "organic", "inorganic", "bio", "fav"}:
+            k = "all"
+        self._active_filter = k
+        self._apply_filters()
+        self._sync_filter_buttons()
+
+    def _sync_filter_buttons(self) -> None:
+
+        ids = getattr(self, "ids", {}) or {}
+        btns = {
+            "all": ids.get("filter_all"),
+            "organic": ids.get("filter_organic"),
+            "inorganic": ids.get("filter_inorganic"),
+            "bio": ids.get("filter_bio"),
+            "fav": ids.get("filter_fav"),
+        }
+
+        app = self.app
+        active_bg = getattr(app, "mm_primary", (0.22, 0.87, 0.80, 1.0))
+        inactive_bg = getattr(app, "mm_surface2", (0.13, 0.16, 0.24, 1.0))
+        active_text = (0, 0, 0, 1)
+        inactive_text = getattr(app, "mm_text", (1, 1, 1, 1))
+
+        for k, b in btns.items():
+            if not b:
+                continue
+            is_active = k == self._active_filter
+            try:
+                b.theme_bg_color = "Custom"
+                b.md_bg_color = active_bg if is_active else inactive_bg
+            except Exception:
+                pass
+
+            try:
+
+                for ch in getattr(b, "children", []) or []:
+                    if getattr(ch, "__class__", None) and ch.__class__.__name__ == "MDButtonText":
+                        ch.theme_text_color = "Custom"
+                        ch.text_color = active_text if is_active else inactive_text
+            except Exception:
+                pass
 
     def _harden_search_field_colors(self) -> None:
         sf = self.ids.get("search_field")
@@ -426,19 +728,31 @@ class MoleculesScreen(Screen):
         )
 
     def on_search(self, text: str) -> None:
-        q = (text or "").strip().lower()
+        self._query = (text or "").strip().lower()
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
         if not self._all:
             return
 
-        if not q:
-            self._filtered = list(self._all)
-        else:
+        q = (self._query or "").strip().lower()
+        fav = self._favorite_keys()
 
-            def hit(m: MoleculeItem) -> bool:
-                return q in m.ru_name.lower() or q in m.formula.lower() or q in m.key.lower()
+        def hit(m: MoleculeItem) -> bool:
+            if self._active_filter == "organic" and m.category != "Органика":
+                return False
+            if self._active_filter == "inorganic" and m.category != "Неорганика":
+                return False
+            if self._active_filter == "bio" and m.category != "Биомолекулы":
+                return False
+            if self._active_filter == "fav" and m.key not in fav:
+                return False
 
-            self._filtered = [m for m in self._all if hit(m)]
+            if not q:
+                return True
+            return q in m.ru_name.lower() or q in m.formula.lower() or q in m.key.lower()
 
+        self._filtered = [m for m in self._all if hit(m)]
         self._render_list()
 
     def _assets_dir(self) -> Path:
@@ -464,14 +778,14 @@ class MoleculesScreen(Screen):
             mol_data = _MOLECULE_DATA.get(key)
             if mol_data:
                 ru = mol_data[0]
-                description = mol_data[1]
+                description = _sanitize_text_for_ui(mol_data[1])
             else:
                 ru = key.replace("_", " ").strip().capitalize()
                 description = ""
 
             try:
                 counts = _counts_from_pdb(pdb)
-                formula = _formula_hill(counts)
+                formula = _formula_for_display(counts)
                 mass = _mass_from_counts(counts, pdb.name)
             except Exception as e:
                 Logger.exception(f"[Molecules] Failed to parse {pdb}: {e}")
@@ -486,6 +800,7 @@ class MoleculesScreen(Screen):
                     formula=formula,
                     mass_g_mol=mass,
                     description=description,
+                    category=_category_for_key(key),
                 )
             )
 
@@ -504,13 +819,13 @@ class MoleculesScreen(Screen):
 
         app = self.app
 
-        # делаем "воздух" между карточками
+
         if hasattr(lst, "spacing"):
             lst.spacing = dp(app.mm_molecules_list_spacing)
         if hasattr(lst, "padding"):
             lst.padding = (0, 0, 0, dp(app.mm_molecules_list_bottom_padding))
 
-        # фон карточек берём только отсюда (стабильно тёмный)
+
         card_bg = getattr(app, "mm_molecules_card_bg", (0.10, 0.11, 0.14, 1))
         border = getattr(app, "mm_molecules_card_border", (1, 1, 1, 0.16))
         pressed_delta = float(getattr(app, "mm_molecules_card_pressed_delta", 0.08))
@@ -521,7 +836,7 @@ class MoleculesScreen(Screen):
         title_fs = dp(18)
         sub_fs = dp(14)
 
-        for m in self._filtered:
+        for idx, m in enumerate(self._filtered):
             title_line = f"{m.ru_name} ({m.formula})"
 
             def _open(m_item=m, ttl=title_line):
@@ -541,6 +856,15 @@ class MoleculesScreen(Screen):
                 height=dp(72),
             )
 
+
+            if idx < 12:
+                card.opacity = 0
+                delay = 0.035 * idx
+                Clock.schedule_once(
+                    lambda _dt, c=card: Animation(opacity=1, d=0.30, t="out_cubic").start(c),
+                    delay,
+                )
+
             box = BoxLayout(orientation="vertical", spacing=dp(4))
 
             title = MDLabel(
@@ -555,11 +879,15 @@ class MoleculesScreen(Screen):
                 height=dp(24),
             )
 
-            mass_txt = (
-                "Молекулярная масса: N/A"
-                if m.mass_g_mol is None
-                else f"M = {m.mass_g_mol:.2f} г/моль"
-            )
+            tag = (m.category or "").strip()
+            mass_txt = ""
+            if m.mass_g_mol is None:
+                mass_txt = "Молекулярная масса: N/A"
+            else:
+                mass_txt = f"M = {m.mass_g_mol:.2f} г/моль"
+            if tag:
+
+                mass_txt = f"{tag} | {mass_txt}".strip()
             mass = MDLabel(
                 text=mass_txt,
                 theme_text_color="Custom",

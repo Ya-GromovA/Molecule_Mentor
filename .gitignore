@@ -6,6 +6,8 @@ __pycache__/
 !assets/llama/*.so
 .Python
 venv/
+.venv/
+.venv*/
 env/
 ENV/
 *.egg-info/
@@ -68,3 +70,4 @@ data/source/
 *.tmp
 *.log
 .temp_headless/
+CONVERSATION_LOG.md

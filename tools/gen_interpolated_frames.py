@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ def lerp(a: float, b: float, t: float) -> float:
 
 
 def ease_in_out(t: float) -> float:
-    # smoothstep
+
     return t * t * (3.0 - 2.0 * t)
 
 
@@ -38,7 +38,7 @@ def main():
     if not frames:
         raise SystemExit("No frames in source")
 
-    # find 2 distinct keyframes: first and first different from it
+
     f0 = frames[0]
     sig0 = frame_sig(f0)
 
@@ -48,7 +48,7 @@ def main():
             f1 = fr
             break
     if f1 is None:
-        # fallback: last frame
+
         f1 = frames[-1]
 
     a0 = f0.get("atoms", [])
@@ -56,7 +56,7 @@ def main():
     if len(a0) != len(a1):
         raise SystemExit(f"Atom count mismatch: {len(a0)} vs {len(a1)}")
 
-    bonds = f0.get("bonds", [])  # keep bonds stable
+    bonds = f0.get("bonds", [])
     out_frames = []
 
     n = max(2, int(args.frames))

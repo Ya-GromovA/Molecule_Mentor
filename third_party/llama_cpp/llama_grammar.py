@@ -1,6 +1,6 @@
 """Python implementation of llama grammar parser directly translated from C++ source file in vendor/llama.cpp/common/grammar-parser.cpp."""
 
-# flake8: noqa
+
 from pathlib import Path
 
 from itertools import groupby
@@ -237,8 +237,8 @@ import json
 import re
 from typing import List, Optional
 
-# whitespace is constrained to a single space char to prevent model "running away" in
-# whitespace. Also maybe improves generation quality?
+
+
 SPACE_RULE = '" "?'
 
 
@@ -246,8 +246,8 @@ INVALID_RULE_CHARS_RE = re.compile(r"[^a-zA-Z0-9-]+")
 GRAMMAR_LITERAL_ESCAPE_RE = re.compile(r'[\r\n"]')
 GRAMMAR_LITERAL_ESCAPES = {"\r": "\\r", "\n": "\\n", '"': '\\"'}
 
-# whitespace is constrained to a single space char to prevent model "running away" in
-# whitespace. Also maybe improves generation quality?
+
+
 SPACE_RULE = '" "?'
 
 
@@ -349,7 +349,7 @@ PRIMITIVE_RULES = {
     "null": BuiltinRule('"null" space', []),
 }
 
-# TODO: support "uri", "email" string formats
+
 STRING_FORMAT_RULES = {
     "date": BuiltinRule(
         '[0-9] [0-9] [0-9] [0-9] "-" ( "0" [1-9] | "1" [0-2] ) "-" ( "0" [1-9] | [1-2] [0-9] | "3" [0-1] )',
@@ -532,17 +532,17 @@ class SchemaConverter:
             nonlocal sub_rule_ids
 
             start = i
-            # For each component of this sequence, store its string representation and whether it's a literal.
-            # We only need a flat structure here to apply repetition operators to the last item, and
-            # to merge literals at the and (we're parsing grouped ( sequences ) recursively and don't treat '|' specially
-            # (GBNF's syntax is luckily very close to regular expressions!)
+
+
+
+
             seq: list[Tuple[str, bool]] = []
 
             def get_dot():
                 if self._dotall:
                     rule = DOTALL
                 else:
-                    # Accept any character... except \n and \r line break chars (\x0A and \xOD)
+
                     rule = DOT
                 return self._add_rule(f"dot", rule)
 
@@ -837,7 +837,7 @@ class SchemaConverter:
 
         else:
             assert schema_type in PRIMITIVE_RULES, f"Unrecognized schema: {schema}"
-            # TODO: support minimum, maximum, exclusiveMinimum, exclusiveMaximum at least for zero
+
             return self._add_primitive(
                 "root" if rule_name == "root" else schema_type,
                 PRIMITIVE_RULES[schema_type],
@@ -861,7 +861,7 @@ class SchemaConverter:
         additional_properties: Union[bool, Any],
     ):
         prop_order = self._prop_order
-        # sort by position in prop_order (if specified) then by original order
+
         sorted_props = [
             kv[0]
             for _, kv in sorted(

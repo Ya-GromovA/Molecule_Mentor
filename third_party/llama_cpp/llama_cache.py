@@ -97,7 +97,7 @@ class LlamaRAMCache(BaseLlamaCache):
             self.cache_state.popitem(last=False)
 
 
-# Alias for backwards compatibility
+
 LlamaCache = LlamaRAMCache
 
 
@@ -112,7 +112,7 @@ class LlamaDiskCache(BaseLlamaCache):
 
     @property
     def cache_size(self):
-        return int(self.cache.volume())  # type: ignore
+        return int(self.cache.volume())
 
     def _find_longest_prefix_key(
         self,
@@ -120,11 +120,11 @@ class LlamaDiskCache(BaseLlamaCache):
     ) -> Optional[Tuple[int, ...]]:
         min_len = 0
         min_key: Optional[Tuple[int, ...]] = None
-        for k in self.cache.iterkeys():  # type: ignore
+        for k in self.cache.iterkeys():
             prefix_len = llama_cpp.llama.Llama.longest_token_prefix(k, key)
             if prefix_len > min_len:
                 min_len = prefix_len
-                min_key = k  # type: ignore
+                min_key = k
         return min_key
 
     def __getitem__(self, key: Sequence[int]) -> "llama_cpp.llama.LlamaState":
@@ -132,10 +132,10 @@ class LlamaDiskCache(BaseLlamaCache):
         _key = self._find_longest_prefix_key(key)
         if _key is None:
             raise KeyError("Key not found")
-        value: "llama_cpp.llama.LlamaState" = self.cache.pop(_key)  # type: ignore
-        # NOTE: This puts an integer as key in cache, which breaks,
-        # Llama.longest_token_prefix(k, key) above since k is not a tuple of ints/tokens
-        # self.cache.push(_key, side="front")  # type: ignore
+        value: "llama_cpp.llama.LlamaState" = self.cache.pop(_key)
+
+
+
         return value
 
     def __contains__(self, key: Sequence[int]) -> bool:
