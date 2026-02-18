@@ -30,6 +30,33 @@ class Diagnose:
 
 
 class AIEngine:
+    OFFLINE_CHEM_DEFS_RU = {
+        "химия": (
+            "Химия — это наука о веществах: их составе, строении, свойствах и превращениях. "
+            "Она изучает, из чего состоят вещества и как они реагируют друг с другом."
+        ),
+        "бензол": (
+            "Бензол — ароматический углеводород с формулой C6H6. "
+            "Это бесцветная жидкость с характерным запахом, токсичная; используется как сырьё в химической промышленности."
+        ),
+        "аспирин": (
+            "Аспирин — это ацетилсалициловая кислота, формула C9H8O4. "
+            "Применяется как жаропонижающее, обезболивающее и противовоспалительное средство."
+        ),
+        "вода": "Вода — химическое вещество с формулой H2O, универсальный растворитель и необходимая среда для жизни.",
+        "кислота": (
+            "Кислоты — это вещества, которые в водном растворе отдают ионы водорода (H+). "
+            "Примеры: HCl, H2SO4, HNO3."
+        ),
+        "основание": (
+            "Основания — это вещества, которые в растворе дают гидроксид-ионы OH-. "
+            "Примеры: NaOH, KOH, Ca(OH)2."
+        ),
+        "соль": (
+            "Соли — это ионные соединения, обычно продукты реакции кислоты и основания. "
+            "Пример: NaCl."
+        ),
+    }
 
     @staticmethod
     def _log_llama_runtime(msg: str) -> None:
@@ -467,8 +494,9 @@ class AIEngine:
                 "Ты — помощник по химии для школьников 7-11 классов. "
                 "Отвечай только на русском языке, кратко и по делу. "
                 "Отвечай строго на ТЕКУЩИЙ вопрос, не повторяй предыдущие ответы. "
-                "Давай полезный ответ: определение, формула (если уместно), 1-3 примера. "
-                "Если не уверен, честно напиши: 'Я не знаю точного ответа'."
+                "Давай полезный ответ: определение, формула (если уместно), 1-2 примера и одно свойство/применение. "
+                "Не выдумывай факты. Если в деталях не уверен, всё равно дай базовый корректный ответ, "
+                "а в конце коротко отметь, что некоторые детали могут быть неточны."
             )
 
         base = (
@@ -508,7 +536,16 @@ class AIEngine:
         low = a.lower()
         if not a:
             return a
-        if "я не знаю" in low or "не знаю точного" in low or "не уверен" in low:
+
+        # Не обрезаем полезный ответ до одной фразы слишком агрессивно.
+        # Сводим к "не знаю" только если это и так почти весь ответ.
+        uncertainty_hits = (
+            "я не знаю" in low
+            or "не знаю точного" in low
+            or "не уверен" in low
+            or "затрудняюсь ответить" in low
+        )
+        if uncertainty_hits and len(a) < 90:
             return "Я не знаю точного ответа."
         return a
 
@@ -908,6 +945,41 @@ class AIEngine:
 
         return True
 
+    @staticmethod
+    def _normalize_term_key(term: str) -> str:
+        t = (term or "").strip().lower().replace("ё", "е")
+        t = re.sub(r"[^а-яa-z0-9+\- ]+", " ", t)
+        t = re.sub(r"\s{2,}", " ", t).strip()
+        return t
+
+    def _offline_curated_answer(self, text: str) -> Optional[str]:
+        q = (text or "").strip()
+        if not q:
+            return None
+        ql = q.lower()
+        triggers = ("что такое ", "что значит ", "дай определение ", "определи ")
+        if not any(ql.startswith(t) for t in triggers):
+            return None
+
+        term = self._extract_term_ru(q)
+        key = self._normalize_term_key(term)
+        if not key:
+            return None
+
+        if key in self.OFFLINE_CHEM_DEFS_RU:
+            return self.OFFLINE_CHEM_DEFS_RU[key]
+
+        aliases = {
+            "бензен": "бензол",
+            "ацетилсалициловая кислота": "аспирин",
+            "ацетилсалициловая": "аспирин",
+        }
+        alias = aliases.get(key)
+        if alias and alias in self.OFFLINE_CHEM_DEFS_RU:
+            return self.OFFLINE_CHEM_DEFS_RU[alias]
+
+        return None
+
 
     def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 20, verify: bool = True, max_tokens: int = 0) -> str:
 
@@ -920,6 +992,11 @@ class AIEngine:
         m = self.mode()
         is_offline = m == "OFFLINE"
         self._max_tokens_override = max_tokens
+
+        if is_offline:
+            curated = self._offline_curated_answer(text)
+            if curated:
+                return curated
 
 
         retrieved_ctx = ""
@@ -1071,7 +1148,7 @@ class AIEngine:
             or low_answer.startswith("ии недоступен")
         )
 
-        if not is_tech_error:
+        if (not is_offline) and (not is_tech_error):
             answer = self._force_ru_terms(answer)
             answer = self._fix_typos(answer)
 
@@ -1391,7 +1468,6 @@ class AIEngine:
                     max_tokens=plan_tokens,
                 )
                 answer = (res["choices"][0]["message"]["content"] or "").strip()
-                answer = self._translate_english_words(answer)
                 return answer
             except Exception as e:
                 last_err = str(e)
