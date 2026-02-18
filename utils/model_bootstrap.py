@@ -7,10 +7,10 @@ from typing import Optional, Callable
 from kivy.app import App
 
 
-OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-MODEL_SIZE_BYTES = 820_000_000
-MODEL_MIN_BYTES = 200 * 1024 * 1024
+OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_0.gguf"
+MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_0.gguf"
+MODEL_SIZE_BYTES = 773_025_920
+MODEL_MIN_BYTES = 700 * 1024 * 1024
 
 
 def _project_root() -> Path:

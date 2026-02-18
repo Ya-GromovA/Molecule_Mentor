@@ -25,7 +25,7 @@ class ModelDownloadScreen(BaseScreen):
     progress = NumericProperty(0)
     status_text = StringProperty("Для работы ИИ-помощника необходимо скачать модель")
     downloaded_mb = NumericProperty(0)
-    total_mb = NumericProperty(780)
+    total_mb = NumericProperty(737)
     is_downloading = BooleanProperty(False)
     download_error = StringProperty("")
 
@@ -87,7 +87,7 @@ class ModelDownloadScreen(BaseScreen):
 
 
         size_label = MDLabel(
-            text="Размер: ~0.8 ГБ",
+            text="Размер: ~0.77 ГБ",
             halign="center",
             theme_text_color="Custom",
             text_color=text2_color,
@@ -107,7 +107,6 @@ class ModelDownloadScreen(BaseScreen):
 
         self._progress_bar = MDLinearProgressIndicator(
             value=0,
-            type="determinate",
             size_hint_y=None,
             height=dp(8),
         )
@@ -115,7 +114,7 @@ class ModelDownloadScreen(BaseScreen):
 
 
         self._progress_label = MDLabel(
-            text="0 МБ / 780 МБ",
+            text="0 МБ / 737 МБ",
             halign="center",
             theme_text_color="Custom",
             text_color=text2_color,
@@ -203,7 +202,7 @@ class ModelDownloadScreen(BaseScreen):
 
     def _update_progress_ui(self, *args):
         if hasattr(self, "_progress_bar"):
-            self._progress_bar.value = self.progress / 100.0
+            self._progress_bar.value = self.progress
         if hasattr(self, "_progress_label"):
             self._progress_label.text = f"{self.downloaded_mb:.0f} МБ / {self.total_mb:.0f} МБ"
 
@@ -243,67 +242,72 @@ class ModelDownloadScreen(BaseScreen):
 
     def _start_download(self):
         """Запуск скачивания в фоновом потоке."""
-        from utils.model_bootstrap import download_model, OFFLINE_MODEL_NAME
+        try:
+            from utils.model_bootstrap import OFFLINE_MODEL_NAME
 
-        self._cancel_flag = False
-        self.is_downloading = True
-        self.download_error = ""
-        self.status_text = "Скачивание модели..."
-        self.progress = 0
-        self.downloaded_mb = 0
-        self._acquire_wakelock()
+            self._cancel_flag = False
+            self.is_downloading = True
+            self.download_error = ""
+            self.status_text = "Скачивание модели..."
+            self.progress = 0
+            self.downloaded_mb = 0
+            self._acquire_wakelock()
 
-        if hasattr(self, "_progress_bar"):
-            self._progress_bar.value = 0
+            if hasattr(self, "_progress_bar"):
+                self._progress_bar.value = 0
 
-        def progress_callback(downloaded: int, total: int):
-            if self._cancel_flag:
-                raise Exception("Cancelled")
+            def progress_callback(downloaded: int, total: int):
+                if self._cancel_flag:
+                    raise Exception("Cancelled")
 
+                def update(dt):
+                    self.downloaded_mb = downloaded / (1024 * 1024)
+                    self.total_mb = total / (1024 * 1024)
+                    if total > 0:
+                        self.progress = (downloaded / total) * 100
 
-            def update(dt):
-                self.downloaded_mb = downloaded / (1024 * 1024)
-                self.total_mb = total / (1024 * 1024)
-                if total > 0:
-                    self.progress = (downloaded / total) * 100
+                Clock.schedule_once(update, 0)
 
-            Clock.schedule_once(update, 0)
+            def download_work():
+                try:
+                    from utils.model_bootstrap import download_model
 
-        def download_work():
-            try:
+                    download_model(OFFLINE_MODEL_NAME, progress_callback)
 
-                from utils.model_bootstrap import download_model
+                    def on_success(dt):
+                        self.is_downloading = False
+                        self.status_text = "Модель успешно загружена!"
+                        self.progress = 100
+                        if hasattr(self, "_progress_bar"):
+                            self._progress_bar.value = 100
+                        self._release_wakelock()
+                        self._reset_quiz_progress_once()
 
-                download_model(OFFLINE_MODEL_NAME, progress_callback)
+                        Clock.schedule_once(lambda dt: self._finish_and_go_home(), 1.5)
 
-                def on_success(dt):
-                    self.is_downloading = False
-                    self.status_text = "Модель успешно загружена!"
-                    self.progress = 100
-                    if hasattr(self, "_progress_bar"):
-                        self._progress_bar.value = 1.0
-                    self._release_wakelock()
-                    self._reset_quiz_progress_once()
+                    Clock.schedule_once(on_success, 0)
 
-                    Clock.schedule_once(lambda dt: self._finish_and_go_home(), 1.5)
+                except Exception as e:
+                    def on_error(dt):
+                        self.is_downloading = False
+                        if "Cancelled" in str(e):
+                            self.status_text = "Скачивание отменено"
+                            self.download_error = ""
+                        else:
+                            self.status_text = "Ошибка скачивания"
+                            self.download_error = str(e)[:100]
+                        self._release_wakelock()
 
-                Clock.schedule_once(on_success, 0)
+                    Clock.schedule_once(on_error, 0)
 
-            except Exception as e:
-                def on_error(dt):
-                    self.is_downloading = False
-                    if "Cancelled" in str(e):
-                        self.status_text = "Скачивание отменено"
-                        self.download_error = ""
-                    else:
-                        self.status_text = "Ошибка скачивания"
-                        self.download_error = str(e)[:100]
-                    self._release_wakelock()
-
-                Clock.schedule_once(on_error, 0)
-
-        self._download_thread = threading.Thread(target=download_work, daemon=True)
-        self._download_thread.start()
+            self._download_thread = threading.Thread(target=download_work, daemon=True)
+            self._download_thread.start()
+        except Exception as e:
+            Logger.exception(f"[ModelDownload] start failed: {e}")
+            self.is_downloading = False
+            self.status_text = "Ошибка запуска скачивания"
+            self.download_error = str(e)[:100]
+            self._release_wakelock()
 
     def start_download(self) -> None:
         """Публичный запуск скачивания с внешнего экрана."""

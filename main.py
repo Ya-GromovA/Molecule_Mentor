@@ -247,7 +247,8 @@ def _setup_android_llama() -> None:
                 os.environ["LLAMA_CPP_LIB_PATH"] = llama_dir
                 os.environ["LLAMA_CPP_LIB"] = lib_path
                 existing = os.environ.get("LD_LIBRARY_PATH", "")
-                if llama_dir not in existing.split(":" if existing else ""):
+                existing_parts = existing.split(":") if existing else []
+                if llama_dir not in existing_parts:
                     os.environ["LD_LIBRARY_PATH"] = (llama_dir + ":" + existing).strip(":")
                 _early_log(f"_setup_android_llama: LLAMA_CPP_LIB_PATH={llama_dir}")
                 _early_log(f"_setup_android_llama: LLAMA_CPP_LIB={lib_path}")
@@ -456,7 +457,7 @@ COURSES_DB = PROJECT_DIR / "data" / "courses" / "courses.db"
 HF_TOKEN = PROJECT_DIR / "data" / "secrets" / "hf_token.txt"
 
 
-OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+OFFLINE_MODEL_NAME = "Llama-3.2-1B-Instruct-Q4_0.gguf"
 
 MOLECULES_DIR = PROJECT_DIR / "assets" / "molecules"
 REACTIONS_DIR = PROJECT_DIR / "assets" / "reactions"
@@ -781,8 +782,23 @@ class MoleculeMentorApp(MDApp):
     ai_status_display = StringProperty("Идет проверка...")
     nav_state = DictProperty({})
 
+    @staticmethod
+    def _detect_apk_variant() -> str:
+        """Определяет вариант APK по marker-файлу в assets/variant."""
+        base = Path(__file__).resolve().parent / "assets" / "variant"
+        if (base / "online_only.flag").exists():
+            return "online-only"
+        if (base / "lite.flag").exists():
+            return "lite"
+        if (base / "full.flag").exists():
+            return "full"
+        return "lite"
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self.apk_variant = self._detect_apk_variant()
+        self.is_online_only = self.apk_variant == "online-only"
 
 
         self.project_dir = str(PROJECT_DIR)
@@ -915,14 +931,18 @@ class MoleculeMentorApp(MDApp):
         )
 
 
-        need_dl = needs_download(OFFLINE_MODEL_NAME)
-        print(f"[STARTUP] нужна загрузка модели: {need_dl}")
-        if need_dl:
-            print("[STARTUP] показываем окно загрузки")
-            self._show_download_prompt_on_start()
-        else:
-            print("[STARTUP] модель уже доступна")
+        if self.is_online_only:
+            print("[STARTUP] online-only APK: оффлайн-модель отключена")
             self._refresh_ai_status_async()
+        else:
+            need_dl = needs_download(OFFLINE_MODEL_NAME)
+            print(f"[STARTUP] нужна загрузка модели: {need_dl}")
+            if need_dl:
+                print("[STARTUP] показываем окно загрузки")
+                self._show_download_prompt_on_start()
+            else:
+                print("[STARTUP] модель уже доступна")
+                self._refresh_ai_status_async()
 
 
         Clock.schedule_interval(lambda *_: self._refresh_ai_status_async(), 15.0)
@@ -936,6 +956,9 @@ class MoleculeMentorApp(MDApp):
 
     def _show_download_prompt_on_start(self) -> None:
         """Показывает окно с предложением скачать оффлайн-модель."""
+        if self.is_online_only:
+            return
+
         def show_prompt(_dt):
             if self._download_prompt_dialog:
                 try:
@@ -953,7 +976,7 @@ class MoleculeMentorApp(MDApp):
             self._download_prompt_dialog = MDDialog(
                 MDDialogHeadlineText(text="Скачать оффлайн-модель ИИ?"),
                 MDDialogSupportingText(
-                    text="Чтобы ИИ работал без интернета, скачайте модель (~1.9 ГБ)."
+                    text="Чтобы ИИ работал без интернета, скачайте модель (~0.77 ГБ)."
                 ),
                 MDDialogButtonContainer(
                     MDButton(

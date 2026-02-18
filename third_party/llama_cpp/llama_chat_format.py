@@ -2839,16 +2839,6 @@ class Llava15ChatHandler:
         if self.verbose:
             print(text, file=sys.stderr)
 
-        # Create bitmaps from images
-        bitmaps = []
-        bitmap_cleanup = []
-        try:
-            for image_url in image_urls:
-                image_bytes = self.load_image(image_url)
-                bitmap = self._create_bitmap_from_bytes(image_bytes)
-                bitmaps.append(bitmap)
-                bitmap_cleanup.append(bitmap)
-
         bitmaps = []
         bitmap_cleanup = []
         try:
@@ -2950,77 +2940,6 @@ class Llava15ChatHandler:
 
         finally:
 
-            for bitmap in bitmap_cleanup:
-                self._mtmd_cpp.mtmd_bitmap_free(bitmap)
-
-
-                # Reset llama context
-                llama.reset()
-                llama._ctx.kv_cache_clear()
-
-                # Process each chunk
-                n_past = llama_cpp.llama_pos(0)
-                n_chunks = self._mtmd_cpp.mtmd_input_chunks_size(chunks)
-                
-                for i in range(n_chunks):
-                    chunk = self._mtmd_cpp.mtmd_input_chunks_get(chunks, i)
-                    if chunk is None:
-                        continue
-
-                    chunk_type = self._mtmd_cpp.mtmd_input_chunk_get_type(chunk)
-                    
-                    if chunk_type == self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_TEXT:
-                        # Handle text chunk
-                        n_tokens_out = ctypes.c_size_t()
-                        tokens_ptr = self._mtmd_cpp.mtmd_input_chunk_get_tokens_text(
-                            chunk, ctypes.byref(n_tokens_out)
-                        )
-                        
-                        if tokens_ptr and n_tokens_out.value > 0:
-                            # Convert ctypes array to Python list
-                            tokens = [tokens_ptr[j] for j in range(n_tokens_out.value)]
-                            
-                            if llama.n_tokens + len(tokens) > llama.n_ctx():
-                                raise ValueError(
-                                    f"Prompt exceeds n_ctx: {llama.n_tokens + len(tokens)} > {llama.n_ctx()}"
-                                )
-                            llama.eval(tokens)
-                    
-                    elif chunk_type in [self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_IMAGE, self._mtmd_cpp.MTMD_INPUT_CHUNK_TYPE_AUDIO]:
-                        # Handle image/audio chunk using helper
-                        chunk_n_tokens = self._mtmd_cpp.mtmd_input_chunk_get_n_tokens(chunk)
-                        
-                        if llama.n_tokens + chunk_n_tokens > llama.n_ctx():
-                            raise ValueError(
-                                f"Prompt exceeds n_ctx: {llama.n_tokens + chunk_n_tokens} > {llama.n_ctx()}"
-                            )
-                        
-                        new_n_past = llama_cpp.llama_pos(0)
-                        result = self._mtmd_cpp.mtmd_helper_eval_chunk_single(
-                            self.mtmd_ctx,
-                            llama._ctx.ctx,
-                            chunk,
-                            llama_cpp.llama_pos(llama.n_tokens),
-                            llama_cpp.llama_seq_id(0),
-                            llama.n_batch,
-                            False,  # logits_last
-                            ctypes.byref(new_n_past)
-                        )
-                        
-                        if result != 0:
-                            raise ValueError(f"Failed to evaluate chunk: error code {result}")
-                        
-                        # Update llama's token count
-                        llama.n_tokens = new_n_past.value
-
-                # Get prompt tokens to avoid a cache miss
-                prompt = llama.input_ids[: llama.n_tokens].tolist()
-
-            finally:
-                self._mtmd_cpp.mtmd_input_chunks_free(chunks)
-
-        finally:
-            # Cleanup bitmaps
             for bitmap in bitmap_cleanup:
                 self._mtmd_cpp.mtmd_bitmap_free(bitmap)
 

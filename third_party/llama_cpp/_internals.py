@@ -25,6 +25,18 @@ from ._utils import suppress_stdout_stderr
 import llama_cpp.llama_cpp as llama_cpp
 
 
+def _llama_runtime_log(msg: str) -> None:
+    try:
+        android_private = os.environ.get("ANDROID_PRIVATE", "")
+        if not android_private:
+            return
+        path = os.path.join(android_private, "llama_load.log")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"[_internals] {msg}\n")
+    except Exception:
+        pass
+
+
 
 
 
@@ -49,10 +61,12 @@ class LlamaModel:
         if not os.path.exists(path_model):
             raise ValueError(f"Model path does not exist: {path_model}")
 
+        _llama_runtime_log(f"model_load start: {path_model}")
         with suppress_stdout_stderr(disable=verbose):
             model = llama_cpp.llama_model_load_from_file(
                 self.path_model.encode("utf-8"), self.params
             )
+        _llama_runtime_log(f"model_load done: ok={model is not None}")
 
         if model is None:
             raise ValueError(f"Failed to load model from file: {path_model}")
@@ -257,7 +271,13 @@ class LlamaContext:
         self.verbose = verbose
         self._exit_stack = ExitStack()
 
+        _llama_runtime_log(
+            f"ctx_init start: n_ctx={getattr(self.params, 'n_ctx', 'n/a')}, "
+            f"n_batch={getattr(self.params, 'n_batch', 'n/a')}, "
+            f"n_ubatch={getattr(self.params, 'n_ubatch', 'n/a')}"
+        )
         ctx = llama_cpp.llama_init_from_model(self.model.model, self.params)
+        _llama_runtime_log(f"ctx_init done: ok={ctx is not None}")
 
         if ctx is None:
             raise ValueError("Failed to create llama_context")

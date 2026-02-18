@@ -2,17 +2,16 @@
 title = Molecule Mentor
 package.name = moleculementor
 package.domain = org.moleculementor
-version = 0.1.0
+version = 0.2.1
 
 source.dir = .
-; FULL версия: включает офлайн-модель ИИ (Llama 3.2 3B Q4_K_M ~1.9GB)
+; LITE версия: модель не включена в APK (скачивание после установки)
 ; Native библиотеки llama.cpp добавляются через android.add_libs_arm64_v8a
-source.include_exts = py,kv,png,jpg,jpeg,json,pdb,txt,md,ttf,otf,bin,db,gguf
+source.include_exts = py,kv,png,jpg,jpeg,json,pdb,txt,md,ttf,otf,bin,db
 
-source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/models/**,assets/llama/**,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
-; FULL версия: модель включена в APK, исключаем только лишнее
-source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,data/models/**,third_party/llama.cpp/**
-source.exclude_dirs =
+source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/llama/**,assets/variant/lite.flag,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
+; LITE версия: исключаем встроенные модели
+source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,data/models/**,assets/models/**,third_party/llama.cpp/**
 
 icon.filename = assets/icons/app_icon.png
 presplash.filename = assets/icons/presplash.png
@@ -52,5 +51,4 @@ p4a.branch = master
 
 
 [buildozer]
-; FULL версия — офлайн-модель включена в APK (~2GB итого)
-; APK работает полностью офлайн без скачивания модели
+; LITE версия — без встроенной GGUF-модели

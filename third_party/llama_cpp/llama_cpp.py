@@ -460,6 +460,10 @@ LLAMA_POOLING_TYPE_CLS = 2
 LLAMA_POOLING_TYPE_LAST = 3
 LLAMA_POOLING_TYPE_RANK = 4
 
+LLAMA_FLASH_ATTN_TYPE_AUTO = -1
+LLAMA_FLASH_ATTN_TYPE_DISABLED = 0
+LLAMA_FLASH_ATTN_TYPE_ENABLED = 1
+
 
 
 
@@ -833,11 +837,13 @@ class llama_context_params(ctypes.Structure):
         abort_callback_data (ctypes.ctypes.c_void_p): data for abort_callback
         embeddings (bool): if true, extract embeddings (together with logits)
         offload_kqv (bool): whether to offload the KQV ops (including the KV cache) to GPU
-        flash_attn (bool): whether to use flash attention
+        flash_attn_type (int): when to enable flash attention
         no_perf (bool): whether to measure performance timings
         op_offload (bool): offload host tensor operations to device
         swa_full (bool): use full-size SWA cache
         kv_unified (bool): use a unified buffer across the input sequences when computing the attention
+        samplers (ctypes.ctypes.c_void_p): backend sampler chain configuration pointer
+        n_samplers (int): number of backend sampler chains
     """
 
     if TYPE_CHECKING:
@@ -866,11 +872,13 @@ class llama_context_params(ctypes.Structure):
         abort_callback_data: ctypes.c_void_p
         embeddings: bool
         offload_kqv: bool
-        flash_attn: bool
+        flash_attn_type: int
         no_perf: bool
         op_offload: bool
         swa_full: bool
         kv_unified: bool
+        samplers: ctypes.c_void_p
+        n_samplers: int
 
     _fields_ = [
         ("n_ctx", ctypes.c_uint32),
@@ -882,6 +890,7 @@ class llama_context_params(ctypes.Structure):
         ("rope_scaling_type", ctypes.c_int),
         ("pooling_type", ctypes.c_int),
         ("attention_type", ctypes.c_int),
+        ("flash_attn_type", ctypes.c_int),
         ("rope_freq_base", ctypes.c_float),
         ("rope_freq_scale", ctypes.c_float),
         ("yarn_ext_factor", ctypes.c_float),
@@ -898,11 +907,12 @@ class llama_context_params(ctypes.Structure):
         ("abort_callback_data", ctypes.c_void_p),
         ("embeddings", ctypes.c_bool),
         ("offload_kqv", ctypes.c_bool),
-        ("flash_attn", ctypes.c_bool),
         ("no_perf", ctypes.c_bool),
         ("op_offload", ctypes.c_bool),
         ("swa_full", ctypes.c_bool),
         ("kv_unified", ctypes.c_bool),
+        ("samplers", ctypes.c_void_p),
+        ("n_samplers", ctypes.c_size_t),
     ]
 
 

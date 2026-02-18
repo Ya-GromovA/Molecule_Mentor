@@ -31,6 +31,19 @@ class Diagnose:
 
 class AIEngine:
 
+    @staticmethod
+    def _log_llama_runtime(msg: str) -> None:
+        try:
+            android_private = os.environ.get("ANDROID_PRIVATE", "")
+            if android_private:
+                log_path = os.path.join(android_private, "llama_load.log")
+            else:
+                log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "llama_load.log")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[AIEngine] {msg}\n")
+        except Exception:
+            pass
+
 
 
 
@@ -449,6 +462,15 @@ class AIEngine:
 
 
     def _system_prompt_ru(self, is_offline: bool = False) -> str:
+        if is_offline:
+            return (
+                "Ты — помощник по химии для школьников 7-11 классов. "
+                "Отвечай только на русском языке, кратко и по делу. "
+                "Отвечай строго на ТЕКУЩИЙ вопрос, не повторяй предыдущие ответы. "
+                "Давай полезный ответ: определение, формула (если уместно), 1-3 примера. "
+                "Если не уверен, честно напиши: 'Я не знаю точного ответа'."
+            )
+
         base = (
             "Ты — эксперт по химии для школьников 7–11 классов.\n"
             "ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.\n"
@@ -477,13 +499,6 @@ class AIEngine:
 
             "ВАЖНО: ответ должен быть чистым русским текстом без ошибок и странных символов.\n"
         )
-
-        if is_offline:
-            base += (
-                "\nВАЖНО: отвечай достаточно информативно, 4-8 предложений максимум.\n"
-                "Используй ТОЛЬКО русские слова. Никаких английских слов!\n"
-                "Пиши простым языком для школьника.\n"
-            )
 
         return base
 
@@ -926,7 +941,12 @@ class AIEngine:
 
 
         base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
-        base_messages.extend(history[-20:])
+        if is_offline:
+            # Для оффлайн-модели не тащим длинную историю: это ухудшает качество
+            # и провоцирует повтор прошлого ответа.
+            pass
+        else:
+            base_messages.extend(history[-20:])
 
 
         if retrieved_ctx:
@@ -1042,8 +1062,19 @@ class AIEngine:
 
         answer = self._guard_unrelated(text, answer)
         answer = self._trim_if_uncertain(answer)
-        answer = self._force_ru_terms(answer)
-        answer = self._fix_typos(answer)
+
+        low_answer = (answer or "").lower()
+        is_tech_error = (
+            low_answer.startswith("оффлайн-модель")
+            or low_answer.startswith("ошибка загрузки")
+            or low_answer.startswith("ошибка генерации")
+            or low_answer.startswith("ии недоступен")
+        )
+
+        if not is_tech_error:
+            answer = self._force_ru_terms(answer)
+            answer = self._fix_typos(answer)
+
         answer = self._sanitize_for_ui(answer)
         answer = self._fix_cyrillic_confusables(answer)
 
@@ -1160,7 +1191,8 @@ class AIEngine:
             os.environ["LLAMA_CPP_LIB_PATH"] = llama_dir
             os.environ["LLAMA_CPP_LIB"] = lib_path
             existing = os.environ.get("LD_LIBRARY_PATH", "")
-            if llama_dir not in existing.split(":" if existing else ""):
+            existing_parts = existing.split(":") if existing else []
+            if llama_dir not in existing_parts:
                 os.environ["LD_LIBRARY_PATH"] = (llama_dir + ":" + existing).strip(":")
 
             for dep in ("libomp.so", "libggml-base.so", "libggml-cpu.so", "libggml.so"):
@@ -1204,6 +1236,11 @@ class AIEngine:
                 return self._llama
 
         try:
+            if not self._try_import_llama():
+                with self._lock:
+                    reason = self._llama_err or "import llama_cpp failed"
+                raise ImportError(reason)
+
             from llama_cpp import Llama
 
 
@@ -1212,7 +1249,7 @@ class AIEngine:
 
             n_threads = int(os.environ.get("LLAMA_THREADS", str(default_threads)))
             n_gpu_layers = int(os.environ.get("LLAMA_GPU_LAYERS", "0"))
-            env_n_ctx = int(os.environ.get("LLAMA_N_CTX", "512"))
+            env_n_ctx = int(os.environ.get("LLAMA_N_CTX", "1024"))
             env_n_batch = int(os.environ.get("LLAMA_N_BATCH", "64"))
             env_n_ubatch = int(os.environ.get("LLAMA_N_UBATCH", str(env_n_batch)))
 
@@ -1225,6 +1262,7 @@ class AIEngine:
                 (64, 4, 4, 1, True),
                 (64, 2, 2, 1, False),
                 (32, 1, 1, 1, False),
+                (16, 1, 1, 1, False),
             ]
 
             # Сохраняем порядок и убираем дубликаты.
@@ -1239,6 +1277,9 @@ class AIEngine:
             llm = None
             for n_ctx, n_batch, n_ubatch, cur_threads, cur_mmap in unique_attempts:
                 try:
+                    self._log_llama_runtime(
+                        f"try Llama(model={self.offline_model_path}, n_ctx={n_ctx}, n_batch={n_batch}, n_ubatch={n_ubatch}, n_threads={cur_threads}, use_mmap={cur_mmap})"
+                    )
                     llm = Llama(
                         model_path=self.offline_model_path,
                         n_ctx=int(n_ctx),
@@ -1254,8 +1295,10 @@ class AIEngine:
                         numa=False,
                         verbose=False,
                     )
+                    self._log_llama_runtime("Llama() init SUCCESS")
                     break
                 except Exception as e:
+                    self._log_llama_runtime(f"Llama() init FAILED: {e}")
                     last_err = e
 
             if llm is None:
@@ -1286,25 +1329,76 @@ class AIEngine:
                 self._llama_err = err_msg
             if "llama_cpp" in err_msg.lower() or "import" in err_msg.lower():
                 return f"Оффлайн-модель недоступна: не удалось загрузить llama_cpp. {err_msg[:80]}"
+            if "create llama_context" in err_msg.lower() or "llama_context" in err_msg.lower():
+                return (
+                    "Оффлайн-модель скачана, но не запускается на этом устройстве. "
+                    "Вероятно, не хватает памяти для локального ИИ."
+                )
             if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
                 return f"Оффлайн-модель не найдена по пути: {self.offline_model_path}"
             return f"Ошибка загрузки оффлайн-модели: {err_msg[:100]}"
 
-        try:
+        def _trim_for_offline(src: list[dict], keep_turns: int, compact_system: bool) -> list[dict]:
+            if not src:
+                return src
 
-            tokens = getattr(self, "_max_tokens_override", 0) or 400
-            res = llm.create_chat_completion(
-                messages=messages,
-                temperature=0.3,
-                top_p=0.9,
-                max_tokens=tokens,
-            )
-            answer = (res["choices"][0]["message"]["content"] or "").strip()
+            system_msgs = [m for m in src if m.get("role") == "system"]
+            convo = [m for m in src if m.get("role") != "system"]
 
-            answer = self._translate_english_words(answer)
-            return answer
-        except Exception as e:
-            return f"Ошибка генерации ответа: {str(e)[:100]}"
+            last_user = ""
+            for m in reversed(convo):
+                if m.get("role") == "user":
+                    last_user = (m.get("content") or "").strip()
+                    break
+
+            if keep_turns <= 0:
+                q = last_user or ((convo[-1].get("content") if convo else "") or "")
+                convo_part = [{"role": "user", "content": q}]
+            else:
+                keep_count = max(1, keep_turns * 2 + 1)
+                convo_part = convo[-keep_count:]
+
+            if compact_system:
+                system_part = [{
+                    "role": "system",
+                    "content": (
+                        "Ты помощник по химии. Ответь только на текущий вопрос на русском языке. "
+                        "Формат: что это, формула (если есть), 1-2 примера. "
+                        "Не повторяй предыдущие ответы."
+                    ),
+                }]
+            else:
+                system_part = system_msgs
+
+            return system_part + convo_part
+
+        base_tokens = getattr(self, "_max_tokens_override", 0) or 400
+        plans = [
+            (_trim_for_offline(messages, 2, False), min(base_tokens, 160)),
+            (_trim_for_offline(messages, 1, False), 120),
+            (_trim_for_offline(messages, 1, True), 96),
+            (_trim_for_offline(messages, 0, True), 80),
+        ]
+
+        last_err = None
+        for plan_messages, plan_tokens in plans:
+            try:
+                res = llm.create_chat_completion(
+                    messages=plan_messages,
+                    temperature=0.1,
+                    top_p=0.85,
+                    repeat_penalty=1.12,
+                    max_tokens=plan_tokens,
+                )
+                answer = (res["choices"][0]["message"]["content"] or "").strip()
+                answer = self._translate_english_words(answer)
+                return answer
+            except Exception as e:
+                last_err = str(e)
+                if "exceed context window" not in last_err.lower() and "requested tokens" not in last_err.lower():
+                    return f"Ошибка генерации ответа: {last_err[:100]}"
+
+        return "Слишком длинный диалог для оффлайн-модели. Очистите чат и задайте вопрос снова."
 
     def _ask_online(self, messages: list[dict], timeout_sec: int) -> str:
         tok = self._read_token()
