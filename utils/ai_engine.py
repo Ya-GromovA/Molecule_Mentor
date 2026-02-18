@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import ctypes
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any
 from urllib.parse import quote
@@ -92,6 +93,7 @@ class AIEngine:
 
         self._retrieval_cache: Dict[str, Tuple[float, str, list[str]]] = {}
         self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))
+        self._local_chem_snippets = self._load_local_chem_snippets()
 
         self._stop = False
         self._health_thread = threading.Thread(target=self._health_loop, daemon=True)
@@ -699,6 +701,60 @@ class AIEngine:
         self._retrieval_cache[key] = (now, ctx, sources)
         return ctx, sources
 
+    def _load_local_chem_snippets(self) -> list[str]:
+        snippets: list[str] = []
+        try:
+            root = Path(__file__).resolve().parents[1]
+            p = root / "data" / "courses" / "chem10_adv_outline.json"
+            if not p.exists():
+                return snippets
+
+            data = json.loads(p.read_text(encoding="utf-8"))
+            sections = data.get("sections", []) if isinstance(data, dict) else []
+
+            for sec in sections:
+                s_title = (sec.get("title") or "").strip()
+                if s_title:
+                    snippets.append(s_title)
+                for topic in sec.get("topics", []) or []:
+                    t_title = (topic.get("title") or "").strip()
+                    if t_title:
+                        snippets.append(t_title)
+        except Exception:
+            return []
+
+        out: list[str] = []
+        seen = set()
+        for s in snippets:
+            if s in seen:
+                continue
+            seen.add(s)
+            out.append(s)
+        return out
+
+    def _build_local_context_ru(self, query: str, top_n: int = 6) -> str:
+        q = (query or "").lower().replace("ё", "е")
+        q_tokens = set(re.findall(r"[а-яa-z0-9]{4,}", q))
+        if not q_tokens or not self._local_chem_snippets:
+            return ""
+
+        scored: list[tuple[int, str]] = []
+        for s in self._local_chem_snippets:
+            st = s.lower().replace("ё", "е")
+            st_tokens = set(re.findall(r"[а-яa-z0-9]{4,}", st))
+            if not st_tokens:
+                continue
+            score = len(q_tokens & st_tokens)
+            if score > 0:
+                scored.append((score, s))
+
+        if not scored:
+            return ""
+
+        scored.sort(key=lambda x: (-x[0], len(x[1])))
+        best = [s for _, s in scored[:top_n]]
+        return "\n".join(f"- {x}" for x in best)
+
 
     _SUBSCRIPT_MAP = str.maketrans({
         "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
@@ -993,13 +1049,9 @@ class AIEngine:
         is_offline = m == "OFFLINE"
         self._max_tokens_override = max_tokens
 
-        if is_offline:
-            curated = self._offline_curated_answer(text)
-            if curated:
-                return curated
-
 
         retrieved_ctx = ""
+        local_ctx = ""
         retrieved_sources: list[str] = []
         strict_sources = os.environ.get("MM_STRICT_SOURCES", "0").strip().lower() not in ("0", "false", "no")
 
@@ -1015,6 +1067,9 @@ class AIEngine:
                     "Уточни термин (например, добавь синоним в скобках) или напиши формулу/контекст.\n"
                     f"Что искала: «{term}»"
                 )
+
+        if is_offline and self._is_chem_query(text):
+            local_ctx = self._build_local_context_ru(text)
 
 
         base_messages: list[dict] = [{"role": "system", "content": self._system_prompt_ru(is_offline=is_offline)}]
@@ -1036,6 +1091,18 @@ class AIEngine:
                         "Запрещено добавлять новые факты, которых нет в этих данных.\n"
                         "Если чего-то не хватает — скажи, что данных недостаточно.\n\n"
                         f"{retrieved_ctx}"
+                    ),
+                }
+            )
+
+        if local_ctx:
+            base_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "НИЖЕ — ЛОКАЛЬНЫЕ УЧЕБНЫЕ ТЕМЫ ПО ХИМИИ. "
+                        "Опирайся на них и на школьный курс, не выдумывай факты.\n"
+                        f"{local_ctx}"
                     ),
                 }
             )
