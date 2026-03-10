@@ -11,7 +11,6 @@ from kivy.properties import StringProperty
 from kivy.uix.widget import Widget
 from kivy.uix.screenmanager import Screen
 
-from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 
 from utils.molecule_parser import MoleculeParseError, parse_pdb
@@ -99,17 +98,9 @@ class MoleculeViewerScreen(Screen):
         host.clear_widgets()
 
 
-        card = MDCard(
-            md_bg_color=getattr(self.app, "mm_surface2", getattr(self.app, "mm_surface", (0.10, 0.11, 0.14, 1))),
-            radius=[18, 18, 18, 18],
-            padding=(dp(10), dp(10), dp(10), dp(10)),
-            size_hint=(1, 1),
-        )
-
         viewer = Visualizer3D()
         self._viewer = viewer
-        card.add_widget(viewer)
-        host.add_widget(card)
+        host.add_widget(viewer)
 
 
         try:

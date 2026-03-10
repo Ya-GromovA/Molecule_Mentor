@@ -15,6 +15,7 @@ from kivymd.uix.progressindicator import MDLinearProgressIndicator
 from kivymd.uix.scrollview import MDScrollView
 
 from .base_screen import BaseScreen
+from .marquee_label import MarqueeLabel
 from utils.text_sanitize import sanitize_text_for_kivy
 
 
@@ -189,21 +190,18 @@ class CourseCard(ButtonBehavior, BoxLayout):
         self.bind(pos=self._update_bg, size=self._update_bg)
 
 
-        self._title_label = MDLabel(
+        self._title_label = MarqueeLabel(
             text=sanitize_text_for_kivy(title),
             halign="left",
             valign="center",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             bold=True,
-            font_size=dp(16),
-            shorten=True,
-            shorten_from="right",
-            max_lines=1,
+            font_size=dp(15),
             size_hint_x=1,
+            speed=1.8,
         )
-        self._title_label.text_size = (dp(10), None)
-        self._title_label.bind(size=lambda inst, *_: setattr(inst, "text_size", (max(dp(10), inst.width), None)))
+        self._title_label.text_size = (None, None)
         self.add_widget(self._title_label)
 
 
@@ -224,7 +222,7 @@ class CourseCard(ButtonBehavior, BoxLayout):
         self._bg_rect.pos = self.pos
         self._bg_rect.size = self.size
         self._border_line.rounded_rectangle = [self.x, self.y, self.width, self.height, dp(16)]
-        self._title_label.text_size = (max(dp(10), self._title_label.width), None)
+        self._title_label.text_size = (None, None)
 
     def on_press(self):
         self._color_instr.rgba = self._pressed_color
@@ -281,11 +279,6 @@ class CoursesScreen(BaseScreen):
 
 
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
-        with root.canvas.before:
-            Color(*app.mm_bg)
-            self._root_bg = RoundedRectangle(pos=root.pos, size=root.size)
-        root.bind(pos=lambda *_: setattr(self._root_bg, 'pos', root.pos),
-                  size=lambda *_: setattr(self._root_bg, 'size', root.size))
 
 
         best, last, attempts = self._get_total_progress()

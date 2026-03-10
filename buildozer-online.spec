@@ -8,7 +8,7 @@ source.dir = .
 ; ONLINE-ONLY версия: только онлайн ИИ, без оффлайн-модели и без экрана скачивания
 source.include_exts = py,kv,png,jpg,jpeg,json,pdb,txt,md,ttf,otf,bin,db
 
-source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/llama/**,assets/variant/online_only.flag,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
+source.include_patterns = assets/icons/**,assets/splash/**,assets/molecules/**,assets/reactions/**,assets/llama/**,assets/variant/online_only.flag,assets/bg.png,kv/**,screens/**,utils/**,data/**,third_party/llama_cpp/**,theme.py,main.py
 source.exclude_patterns = **/*.bak,**/*.tmp,bin/**,.buildozer/**,venv/**,__pycache__/**,.git/**,data/models/**,assets/models/**,third_party/llama.cpp/**
 
 icon.filename = assets/icons/app_icon.png

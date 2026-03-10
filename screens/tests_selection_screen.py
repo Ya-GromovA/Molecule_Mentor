@@ -49,8 +49,11 @@ class TestCard(ButtonBehavior, BoxLayout):
             valign="center",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
-            font_size=sp(16),
+            font_size=sp(15),
             size_hint_y=1,
+            shorten=True,
+            shorten_from="right",
+            max_lines=1,
         )
         self.add_widget(title_label)
 

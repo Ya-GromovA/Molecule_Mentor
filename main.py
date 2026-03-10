@@ -375,14 +375,14 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Callable, Optional, cast
 _early_log("Standard libs OK")
 
 _early_log("Importing kivy modules...")
 try:
     from kivy.clock import Clock
     from kivy.lang import Builder
-    from kivy.properties import BooleanProperty, DictProperty, StringProperty
+    from kivy.properties import BooleanProperty, DictProperty, NumericProperty, StringProperty
     from kivy.uix.screenmanager import ScreenManager, SlideTransition
     _early_log("kivy modules OK")
 except Exception as e:
@@ -427,6 +427,9 @@ try:
     from screens.favorites_screen import FavoritesScreen
     from screens.ai_assistant_screen import AIAssistantScreen
     from screens.model_download_screen import ModelDownloadScreen
+    from screens.adaptive_route_screen import AdaptiveRouteScreen
+    from screens.virtual_labs_screen import VirtualLabsScreen
+    from screens.exam_prep_screen import ExamPrepScreen
     _early_log("screens OK")
 except Exception as e:
     _early_log(f"screens FAILED: {e}")
@@ -550,21 +553,36 @@ def ensure_mm_tables(db_path: str) -> None:
             FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
         """)
-        
-        # Создаем запись-заглушку для викторин по категориям (quiz_id=0)
-        # Это нужно для foreign key constraint в mm_quiz_attempts
-        # Используем course_id из существующего курса (или 1 по умолчанию)
+
         cur.execute("""
-        INSERT OR IGNORE INTO mm_quizzes (id, course_id, title) 
-        SELECT 0, COALESCE((SELECT id FROM courses LIMIT 1), 1), 'Викторины по категориям'
-        WHERE NOT EXISTS (SELECT 1 FROM mm_quizzes WHERE id = 0)
+        CREATE TABLE IF NOT EXISTS mm_section_progress (
+            section_id INTEGER PRIMARY KEY,
+            best_percent REAL NOT NULL DEFAULT 0,
+            last_percent REAL NOT NULL DEFAULT 0,
+            attempts_count INTEGER NOT NULL DEFAULT 0,
+            correct_answers INTEGER NOT NULL DEFAULT 0,
+            total_answers INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            FOREIGN KEY(section_id) REFERENCES course_sections(id) ON DELETE CASCADE
+        );
         """)
 
-
-
-
-
-
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS mm_lab_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lab_id TEXT NOT NULL,
+            reaction_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            hypothesis TEXT,
+            observations TEXT,
+            conclusion TEXT,
+            score INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+        """)
+        
+        # Создаем служебную запись для викторин по категориям (quiz_id=0).
+        # Запись создается только если уже есть хотя бы один курс.
         cur.execute("""
         INSERT OR IGNORE INTO mm_quizzes (id, course_id, title)
         SELECT 0, (SELECT id FROM courses LIMIT 1), 'Викторины по категориям'
@@ -776,10 +794,20 @@ class MoleculeMentorApp(MDApp):
     """Главный класс приложения"""
 
     top_title = StringProperty("Molecule Mentor")
+    top_title_display = StringProperty("Molecule Mentor")
     back_visible = BooleanProperty(False)
     ai_status = StringProperty("N/A")
     ai_status_phase = StringProperty("checking")
     ai_status_display = StringProperty("Идет проверка...")
+    offline_model_downloaded = BooleanProperty(False)
+    offline_download_in_progress = BooleanProperty(False)
+    offline_download_progress = NumericProperty(0.0)
+    offline_download_downloaded_mb = NumericProperty(0.0)
+    offline_download_total_mb = NumericProperty(737.0)
+    offline_download_status = StringProperty("")
+    offline_download_phase = StringProperty("idle")
+    offline_download_caption = StringProperty("Скачать оффлайн ИИ")
+    bg_image_path = StringProperty("")
     nav_state = DictProperty({})
 
     @staticmethod
@@ -797,6 +825,11 @@ class MoleculeMentorApp(MDApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self._title_marquee_pos = 0.0
+        self._title_marquee_speed = 1.1
+        self._title_marquee_gap = 8
+        self._title_marquee_ev = None
+
         self.apk_variant = self._detect_apk_variant()
         self.is_online_only = self.apk_variant == "online-only"
 
@@ -805,6 +838,7 @@ class MoleculeMentorApp(MDApp):
         self.courses_db = str(COURSES_DB)
         self.molecules_dir = str(MOLECULES_DIR)
         self.reactions_dir = str(REACTIONS_DIR)
+        self.bg_image_path = str((PROJECT_DIR / "assets" / "bg.png").resolve())
 
 
         self.mm_bg = THEME.bg
@@ -830,6 +864,8 @@ class MoleculeMentorApp(MDApp):
         self._ai_dialog: Optional[MDDialog] = None
         self._download_prompt_dialog: Optional[MDDialog] = None
         self._ai_lock = threading.RLock()
+        self._offline_download_thread: Optional[threading.Thread] = None
+        self._offline_download_lock = threading.RLock()
 
 
         _early_log(f"MoleculeMentorApp.__init__: checking COURSES_DB={COURSES_DB}")
@@ -896,6 +932,9 @@ class MoleculeMentorApp(MDApp):
             sm.add_widget(ReactionEditorScreen(name="reaction_editor"))
             sm.add_widget(AIAssistantScreen(name="ai_assistant"))
             sm.add_widget(ModelDownloadScreen(name="model_download"))
+            sm.add_widget(AdaptiveRouteScreen(name="adaptive_route"))
+            sm.add_widget(VirtualLabsScreen(name="virtual_labs"))
+            sm.add_widget(ExamPrepScreen(name="exam_prep"))
             _early_log("MoleculeMentorApp.build: all screens added OK")
         except Exception as e:
             _early_log(f"MoleculeMentorApp.build: adding screens FAILED: {e}")
@@ -950,9 +989,13 @@ class MoleculeMentorApp(MDApp):
 
 
         self._executor.submit(self._seed_quizzes_background)
+        self._refresh_offline_model_state()
+        self._update_offline_download_caption()
 
         self.set_top_title("Главная")
         self.set_back_visible(False)
+        if self._title_marquee_ev is None:
+            self._title_marquee_ev = Clock.schedule_interval(self._tick_title_marquee, 0.2)
 
     def _show_download_prompt_on_start(self) -> None:
         """Показывает окно с предложением скачать оффлайн-модель."""
@@ -971,7 +1014,7 @@ class MoleculeMentorApp(MDApp):
 
             def on_download(*_):
                 self._dismiss_download_prompt()
-                self._start_offline_download_flow()
+                self.start_optional_offline_download()
 
             self._download_prompt_dialog = MDDialog(
                 MDDialogHeadlineText(text="Скачать оффлайн-модель ИИ?"),
@@ -1018,7 +1061,7 @@ class MoleculeMentorApp(MDApp):
 
         Clock.schedule_once(kick, 0.2)
 
-    def _prepare_offline_model_async(self) -> None:
+    def _prepare_offline_model_async(self, on_done: Optional[Callable[[bool, Optional[str]], None]] = None) -> None:
         """Собираем модель из частей в фоновом потоке"""
         def work():
             try:
@@ -1031,6 +1074,8 @@ class MoleculeMentorApp(MDApp):
                 def notify(_dt):
                     self.toast("Оффлайн модель готова")
                     self._refresh_ai_status_async()
+                    if on_done:
+                        on_done(True, None)
 
                 Clock.schedule_once(notify, 0)
             except Exception as e:
@@ -1042,6 +1087,8 @@ class MoleculeMentorApp(MDApp):
                 def notify_err(_dt):
                     self.toast(f"Оффлайн модель недоступна: {err_text}")
                     self._refresh_ai_status_async()
+                    if on_done:
+                        on_done(False, err_text)
 
                 Clock.schedule_once(notify_err, 0)
 
@@ -1052,6 +1099,12 @@ class MoleculeMentorApp(MDApp):
         try:
             if self._ai_engine:
                 self._ai_engine.stop()
+        except Exception:
+            pass
+        try:
+            if self._title_marquee_ev is not None:
+                self._title_marquee_ev.cancel()
+                self._title_marquee_ev = None
         except Exception:
             pass
         try:
@@ -1077,7 +1130,49 @@ class MoleculeMentorApp(MDApp):
 
     def set_top_title(self, title: str) -> None:
         """Устанавливаем заголовок в шапке"""
-        self.top_title = title
+        self.top_title = str(title)
+        self._title_marquee_pos = 0.0
+        self._update_title_display()
+
+    def _title_window_chars(self) -> int:
+        width_px = 360.0
+        try:
+            if self.root is not None:
+                width_px = float(getattr(self.root, "width", 360.0) or 360.0)
+        except Exception:
+            width_px = 360.0
+        return max(10, min(28, int(width_px / 25.0)))
+
+    def _update_title_display(self) -> None:
+        title = str(self.top_title or "")
+        if not title:
+            self.top_title_display = ""
+            return
+        wnd = self._title_window_chars()
+        if len(title) <= wnd:
+            self.top_title_display = title
+            return
+        gap = " " * int(self._title_marquee_gap)
+        stream = title + gap + title
+        cycle = len(title) + len(gap)
+        pos = int(self._title_marquee_pos) % cycle
+        self.top_title_display = stream[pos:pos + wnd]
+
+    def _tick_title_marquee(self, dt: float) -> None:
+        title = str(self.top_title or "")
+        if not title:
+            self.top_title_display = ""
+            return
+        wnd = self._title_window_chars()
+        if len(title) <= wnd:
+            self.top_title_display = title
+            self._title_marquee_pos = 0.0
+            return
+        cycle = len(title) + int(self._title_marquee_gap)
+        self._title_marquee_pos += float(dt) * float(self._title_marquee_speed)
+        if self._title_marquee_pos >= cycle:
+            self._title_marquee_pos = 0.0
+        self._update_title_display()
 
     def set_back_visible(self, visible: bool) -> None:
         """Показать/скрыть кнопку назад"""
@@ -1203,6 +1298,123 @@ class MoleculeMentorApp(MDApp):
         self.set_top_title("Загрузка модели")
         self._set_screen("model_download")
 
+    def start_optional_offline_download(self) -> None:
+        if self.offline_model_downloaded:
+            self.toast("Оффлайн-модель уже скачана")
+            return
+        if self.offline_download_in_progress:
+            self.toast("Загрузка уже выполняется в фоне")
+            return
+        self._dismiss_download_prompt()
+        self._start_offline_download_background()
+
+    def _update_offline_download_caption(self) -> None:
+        if self.offline_model_downloaded:
+            self.offline_download_caption = "Оффлайн ИИ скачан"
+            return
+        if not self.offline_download_in_progress:
+            self.offline_download_caption = "Скачать оффлайн ИИ"
+            return
+
+        phase = str(self.offline_download_phase or "")
+        if phase == "downloading":
+            remaining = max(0.0, float(self.offline_download_total_mb) - float(self.offline_download_downloaded_mb))
+            self.offline_download_caption = (
+                f"Скачивание ИИ: {int(self.offline_download_progress)}% · осталось {remaining:.0f} МБ"
+            )
+        elif phase == "installing":
+            self.offline_download_caption = "Установка оффлайн ИИ..."
+        else:
+            self.offline_download_caption = "Подготовка оффлайн ИИ..."
+
+    def _start_offline_download_background(self) -> None:
+        with self._offline_download_lock:
+            if self.offline_download_in_progress:
+                return
+
+            try:
+                p = get_available_model_path(OFFLINE_MODEL_NAME)
+                if p is not None:
+                    self.offline_model_downloaded = True
+                    self.offline_download_phase = "done"
+                    self.offline_download_progress = 100.0
+                    self._update_offline_download_caption()
+                    self.toast("Оффлайн-модель уже доступна")
+                    return
+            except Exception:
+                pass
+
+            self.offline_download_in_progress = True
+            self.offline_download_phase = "downloading"
+            self.offline_download_progress = 0.0
+            self.offline_download_downloaded_mb = 0.0
+            self.offline_download_total_mb = 737.0
+            self.offline_download_status = "Скачивание модели..."
+            self._update_offline_download_caption()
+
+        def progress_callback(downloaded: int, total: int) -> None:
+            def upd(_dt):
+                self.offline_download_phase = "downloading"
+                self.offline_download_downloaded_mb = float(downloaded) / (1024 * 1024)
+                self.offline_download_total_mb = max(1.0, float(total) / (1024 * 1024))
+                self.offline_download_progress = min(100.0, (float(downloaded) / max(1.0, float(total))) * 100.0)
+                self.offline_download_status = "Скачивание модели..."
+                self._update_offline_download_caption()
+
+            Clock.schedule_once(upd, 0)
+
+        def work() -> None:
+            try:
+                from utils.model_bootstrap import download_model
+
+                download_model(OFFLINE_MODEL_NAME, progress_callback)
+
+                def on_downloaded(_dt):
+                    self.offline_download_phase = "installing"
+                    self.offline_download_progress = 100.0
+                    self.offline_download_status = "Установка модели..."
+                    self._update_offline_download_caption()
+
+                    def after_prepare(ok: bool, err: Optional[str]) -> None:
+                        self.offline_download_in_progress = False
+                        if ok:
+                            self.offline_model_downloaded = True
+                            self.offline_download_phase = "done"
+                            self.offline_download_status = "Модель готова"
+                        else:
+                            self.offline_model_downloaded = False
+                            self.offline_download_phase = "error"
+                            self.offline_download_status = f"Ошибка установки: {str(err or '')[:80]}"
+                        self._refresh_offline_model_state()
+                        self._update_offline_download_caption()
+
+                    self._prepare_offline_model_async(on_done=after_prepare)
+
+                Clock.schedule_once(on_downloaded, 0)
+            except Exception as e:
+                err_text = str(e)
+
+                def on_error(_dt):
+                    self.offline_download_in_progress = False
+                    self.offline_download_phase = "error"
+                    self.offline_download_status = f"Ошибка скачивания: {err_text[:80]}"
+                    self._update_offline_download_caption()
+                    self.toast("Не удалось скачать оффлайн-модель")
+
+                Clock.schedule_once(on_error, 0)
+
+        self._offline_download_thread = threading.Thread(target=work, daemon=True)
+        self._offline_download_thread.start()
+        self.toast("Скачивание оффлайн-модели запущено в фоне")
+
+    def _refresh_offline_model_state(self) -> None:
+        try:
+            p = get_available_model_path(OFFLINE_MODEL_NAME)
+            self.offline_model_downloaded = bool(p is not None)
+        except Exception:
+            self.offline_model_downloaded = False
+        self._update_offline_download_caption()
+
     def open_course(self, course_id: int, course_title: str) -> None:
         """Открыть курс (список разделов)"""
         st = dict(self.nav_state or {})
@@ -1278,10 +1490,35 @@ class MoleculeMentorApp(MDApp):
         self.set_top_title("Избранное")
         self._set_screen("favorites")
 
+    def open_adaptive_route(self) -> None:
+        self.nav_state = {}
+        self.set_top_title("Учебный маршрут")
+        self._set_screen("adaptive_route")
+
+    def open_virtual_labs(self) -> None:
+        self.nav_state = {}
+        self.set_top_title("Виртуальные лабораторные")
+        self._set_screen("virtual_labs")
+
+    def open_exam_prep(self) -> None:
+        self.nav_state = {}
+        self.set_top_title("Подготовка к ОГЭ/ЕГЭ")
+        self._set_screen("exam_prep")
+
+    def open_custom_quiz(self, title: str, questions: list[dict], return_screen: str = "quiz_selection") -> None:
+        self.nav_state = {
+            "quiz_title": str(title),
+            "custom_questions": list(questions),
+            "quiz_return": str(return_screen),
+        }
+        self.set_top_title(str(title))
+        self._set_screen("quiz")
+
 
 
     def _refresh_ai_status_async(self) -> None:
         """Обновляем статус ИИ"""
+        self._refresh_offline_model_state()
         if not self._ai_engine:
             self.ai_status = "N/A"
             self.ai_status_phase = "na"

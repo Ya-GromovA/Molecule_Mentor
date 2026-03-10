@@ -20,14 +20,14 @@ class AppTheme:
 
 
 THEME = AppTheme(
-    bg=(0.12, 0.15, 0.25, 1.0),
-    surface=(0.10, 0.12, 0.18, 1.0),
-    surface2=(0.13, 0.16, 0.24, 1.0),
+    bg=(0.11, 0.14, 0.24, 1.0),
+    surface=(0.21, 0.19, 0.30, 1.0),
+    surface2=(0.25, 0.23, 0.35, 1.0),
     primary=(0.22, 0.87, 0.80, 1.0),
-    accent=(0.55, 0.62, 0.98, 1.0),
+    accent=(0.64, 0.58, 0.90, 1.0),
     button_color=(0.22, 0.87, 0.80, 1.0),
     text=(0.95, 0.96, 0.99, 1.0),
-    text2=(0.75, 0.78, 0.86, 1.0),
+    text2=(0.82, 0.83, 0.90, 1.0),
 )
 
 
@@ -41,5 +41,3 @@ def apply_to_app(app) -> None:
     app.mm_button_color = THEME.button_color
     app.mm_text = THEME.text
     app.mm_text2 = THEME.text2
-
-

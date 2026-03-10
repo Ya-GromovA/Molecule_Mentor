@@ -12,6 +12,7 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.scrollview import MDScrollView
 
 from .base_screen import BaseScreen
+from .marquee_label import MarqueeLabel
 from utils.text_sanitize import sanitize_text_for_kivy
 
 
@@ -75,25 +76,27 @@ class CourseTopicScreen(BaseScreen):
             padding=[dp(16), dp(12), dp(16), dp(12)],
         )
 
-        headline = MDLabel(
+        headline = MarqueeLabel(
             text=sanitize_text_for_kivy(title),
             theme_text_color="Custom",
             text_color=app.mm_text,
-            font_size=dp(16),
+            font_size=dp(15),
             bold=True,
             size_hint_y=None,
             height=dp(24),
+            speed=1.8,
         )
         card.add_widget(headline)
 
         if subtitle:
-            supporting = MDLabel(
+            supporting = MarqueeLabel(
                 text=sanitize_text_for_kivy(subtitle),
                 theme_text_color="Custom",
                 text_color=app.mm_text2,
-                font_size=dp(14),
+                font_size=dp(13),
                 size_hint_y=None,
                 height=dp(20),
+                speed=1.6,
             )
             card.add_widget(supporting)
 

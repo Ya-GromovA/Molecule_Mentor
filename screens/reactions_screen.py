@@ -4,7 +4,7 @@ from kivy.clock import Clock
 from kivy.animation import Animation
 from kivy.logger import Logger
 from kivy.metrics import dp
-from kivy.graphics import Color, Line, Rectangle
+from kivy.graphics import Color, Line
 from kivy.uix.boxlayout import BoxLayout
 
 from kivymd.uix.card import MDCard
@@ -180,17 +180,6 @@ class ReactionsScreen(BaseScreen):
 
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
 
-        bg_rgba = getattr(app, "mm_bg", None) or getattr(app, "mm_surface", None) or (0.06, 0.07, 0.09, 1)
-        with root.canvas.before:
-            self._bg_color = Color(*bg_rgba)
-            self._bg_rect = Rectangle(pos=root.pos, size=root.size)
-
-        def _upd_bg(*_):
-            self._bg_rect.pos = root.pos
-            self._bg_rect.size = root.size
-
-        root.bind(pos=_upd_bg, size=_upd_bg)
-
         if not items:
             root.add_widget(
                 MDLabel(
@@ -343,11 +332,11 @@ class ReactionsScreen(BaseScreen):
                 font_size=title_fs_base,
                 halign="left",
                 valign="middle",
+                size_hint_y=None,
+                height=dp(24),
                 shorten=True,
                 shorten_from="right",
                 max_lines=1,
-                size_hint_y=None,
-                height=dp(24),
             )
             lbl_eq = MDLabel(
                 text=eq_line,
@@ -356,11 +345,11 @@ class ReactionsScreen(BaseScreen):
                 font_size=sub_fs,
                 halign="left",
                 valign="middle",
+                size_hint_y=None,
+                height=dp(18),
                 shorten=True,
                 shorten_from="right",
                 max_lines=1,
-                size_hint_y=None,
-                height=dp(18),
             )
 
             box.add_widget(lbl_title)
@@ -370,7 +359,6 @@ class ReactionsScreen(BaseScreen):
 
             def _adjust_title_font(lbl=lbl_title, base_fs=title_fs_base, min_fs=title_fs_min, card_ref=card):
                 content_w = max(dp(100), card_ref.width - dp(24))
-                lbl.text_size = (content_w, None)
                 lbl.font_size = base_fs
                 lbl.texture_update()
                 while lbl.texture_size[0] > content_w and lbl.font_size > min_fs:
@@ -379,7 +367,6 @@ class ReactionsScreen(BaseScreen):
 
             def _reflow_card(card_ref=card, lbl_eq_ref=lbl_eq, adjust_fn=_adjust_title_font, *_):
                 content_w = max(dp(100), card_ref.width - dp(24))
-                lbl_eq_ref.text_size = (content_w, None)
                 adjust_fn()
 
             card.bind(size=_reflow_card)

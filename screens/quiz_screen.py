@@ -35,6 +35,7 @@ class Question:
     correct: int
     explanation: str
     difficulty: int = 1
+    section_id: int | None = None
 
 
 class OptionRow(ButtonBehavior, BoxLayout):
@@ -174,8 +175,14 @@ class QuizScreen(BaseScreen):
         category = app.nav_state.get("quiz_category")
         section_id = app.nav_state.get("section_id")
         course_id = app.nav_state.get("course_id")
+        custom_questions = app.nav_state.get("custom_questions")
 
-        if category:
+        self._return_screen = str(app.nav_state.get("quiz_return", "quiz_selection"))
+        self._return_title = str(app.nav_state.get("quiz_return_title", ""))
+
+        if custom_questions:
+            self._load_custom_quiz(custom_questions)
+        elif category:
             self._load_category_quiz(category)
         elif section_id:
             self._load_section_quiz(section_id)
@@ -217,6 +224,7 @@ class QuizScreen(BaseScreen):
                     correct=new_correct,
                     explanation=q.get("explanation", ""),
                     difficulty=q.get("difficulty", 1),
+                    section_id=int(q.get("section_id")) if q.get("section_id") is not None else None,
                 ))
 
             title = app.nav_state.get("quiz_title", "Викторина")
@@ -254,6 +262,7 @@ class QuizScreen(BaseScreen):
 
         self._quiz_id = quiz_id
         self._course_id = None
+        self._section_id = int(section_id)
         self._quiz_title = str(quiz["title"])
 
         self._questions: List[Question] = []
@@ -269,6 +278,7 @@ class QuizScreen(BaseScreen):
                 options=[str(x) for x in opts],
                 correct=new_correct,
                 explanation=str(r["explanation"] or ""),
+                section_id=int(section_id),
             ))
 
         if not self._questions:
@@ -308,11 +318,13 @@ class QuizScreen(BaseScreen):
                     correct=new_correct,
                     explanation=q.get("explanation", ""),
                     difficulty=q.get("difficulty", 1),
+                    section_id=int(q.get("section_id")) if q.get("section_id") is not None else int(section_id),
                 ))
 
             self._quiz_title = f"Тест: {section_title}"
             self._quiz_id = None
             self._course_id = None
+            self._section_id = int(section_id)
 
             self._build_quiz_ui()
 
@@ -342,6 +354,7 @@ class QuizScreen(BaseScreen):
 
         self._quiz_id = quiz_id
         self._course_id = int(course_id)
+        self._section_id = None
         self._quiz_title = str(quiz["title"])
 
         self._questions: List[Question] = []
@@ -358,6 +371,45 @@ class QuizScreen(BaseScreen):
             self._show_error("В тесте нет вопросов.")
             return
 
+        self._build_quiz_ui()
+
+    def _load_custom_quiz(self, raw_questions: List[Dict[str, Any]]):
+        app = self.get_app()
+        if not raw_questions:
+            self._show_error("Нет вопросов для выбранного режима")
+            return
+
+        self._questions = []
+        for q in raw_questions:
+            options = [str(x) for x in list(q.get("options", []))]
+            if len(options) < 2:
+                continue
+            correct = int(q.get("correct", 0))
+            if correct < 0 or correct >= len(options):
+                correct = 0
+            correct_text = options[correct]
+            random.shuffle(options)
+            new_correct = options.index(correct_text)
+            sec = q.get("section_id")
+            self._questions.append(
+                Question(
+                    text=str(q.get("q", "")),
+                    options=options,
+                    correct=new_correct,
+                    explanation=str(q.get("explanation", "")),
+                    difficulty=int(q.get("difficulty", 1) or 1),
+                    section_id=int(sec) if sec is not None else None,
+                )
+            )
+
+        if not self._questions:
+            self._show_error("Не удалось сформировать вопросы")
+            return
+
+        self._quiz_title = str(app.nav_state.get("quiz_title", "Тренажер"))
+        self._quiz_id = None
+        self._course_id = None
+        self._section_id = None
         self._build_quiz_ui()
 
     def _show_error(self, message: str):
@@ -399,6 +451,8 @@ class QuizScreen(BaseScreen):
         self._answers: Dict[int, int] = {}
         self._submitted = False
         self._start_time = time.time()
+        if not hasattr(self, "_section_id"):
+            self._section_id = None
 
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
 
@@ -647,6 +701,47 @@ class QuizScreen(BaseScreen):
                             (self._course_id, percent, percent, 1),
                         )
 
+                section_totals: Dict[int, Dict[str, int]] = {}
+                for idx, q in enumerate(self._questions):
+                    sid = q.section_id if q.section_id is not None else self._section_id
+                    if sid is None:
+                        continue
+                    sid = int(sid)
+                    if sid not in section_totals:
+                        section_totals[sid] = {"score": 0, "total": 0}
+                    section_totals[sid]["total"] += 1
+                    if self._answers.get(idx) == q.correct:
+                        section_totals[sid]["score"] += 1
+
+                for sid, agg in section_totals.items():
+                    sec_total = int(agg["total"])
+                    sec_score = int(agg["score"])
+                    if sec_total <= 0:
+                        continue
+                    sec_percent = round(sec_score * 100.0 / sec_total, 1)
+                    row = c.execute(
+                        "select best_percent, attempts_count, correct_answers, total_answers "
+                        "from mm_section_progress where section_id=?",
+                        (sid,),
+                    ).fetchone()
+                    if row:
+                        best = max(float(row["best_percent"]), sec_percent)
+                        attempts = int(row["attempts_count"]) + 1
+                        ca = int(row["correct_answers"] or 0) + sec_score
+                        ta = int(row["total_answers"] or 0) + sec_total
+                        c.execute(
+                            "update mm_section_progress set best_percent=?, last_percent=?, attempts_count=?, "
+                            "correct_answers=?, total_answers=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                            "where section_id=?",
+                            (best, sec_percent, attempts, ca, ta, sid),
+                        )
+                    else:
+                        c.execute(
+                            "insert into mm_section_progress(section_id, best_percent, last_percent, attempts_count, correct_answers, total_answers) "
+                            "values (?, ?, ?, ?, ?, ?)",
+                            (sid, sec_percent, sec_percent, 1, sec_score, sec_total),
+                        )
+
                 c.commit()
         except Exception as e:
             print(f"[QUIZ] Ошибка сохранения результата: {e}")
@@ -798,7 +893,7 @@ class QuizScreen(BaseScreen):
             size_hint=(None, None),
             size=(dp(180), dp(38)),
             pos_hint={"center_x": 0.5},
-            on_release=lambda *_: app.open_quiz_selection(),
+            on_release=lambda *_: self._go_back_after_result(),
         )
         back_btn.add_widget(MDButtonText(text="К викторинам"))
         buttons_box.add_widget(back_btn)
@@ -810,6 +905,17 @@ class QuizScreen(BaseScreen):
 
         scroll.add_widget(root)
         self.add_widget(scroll)
+
+    def _go_back_after_result(self):
+        app = self.get_app()
+        target = str(getattr(self, "_return_screen", "quiz_selection") or "quiz_selection")
+        if target == "exam_prep":
+            app.open_exam_prep()
+            return
+        if target == "adaptive_route":
+            app.open_adaptive_route()
+            return
+        app.open_quiz_selection()
 
     def _show_review(self):
         """Показывает разбор ответов."""

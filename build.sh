@@ -1,29 +1,55 @@
 #!/bin/bash
-# Скрипт для сборки APK
-# Использование:
-#   ./build.sh full   - сборка с моделью (~2 ГБ)
-#   ./build.sh lite   - сборка без модели (~50-100 МБ)
 
-set -e
+set -euo pipefail
 
-if [ "$1" == "lite" ]; then
-    echo "=== Сборка LITE версии (без AI-модели) ==="
-    BUILDOZER_SPEC_FILE=buildozer-lite.spec buildozer -v android debug
-    
-    # Переименовываем APK для ясности
-    if [ -f bin/moleculementor-0.1.0-arm64-v8a-debug.apk ]; then
-        mv bin/moleculementor-0.1.0-arm64-v8a-debug.apk bin/moleculementor-0.1.0-lite-arm64-v8a-debug.apk
-        echo "=== Готово: bin/moleculementor-0.1.0-lite-arm64-v8a-debug.apk ==="
-    fi
-    
-elif [ "$1" == "full" ]; then
-    echo "=== Сборка FULL версии (с AI-моделью) ==="
-    buildozer -v android debug
-    echo "=== Готово: bin/moleculementor-0.1.0-arm64-v8a-debug.apk ==="
-    
+MODE="${1:-all}"
+
+if [ -x "./venv/bin/buildozer" ]; then
+    BUILDOZER_BIN="./venv/bin/buildozer"
+elif command -v buildozer >/dev/null 2>&1; then
+    BUILDOZER_BIN="buildozer"
 else
-    echo "Использование:"
-    echo "  ./build.sh full   - сборка с моделью (~2 ГБ)"
-    echo "  ./build.sh lite   - сборка без модели (~50-100 МБ)"
+    echo "Ошибка: buildozer не найден. Установите его или создайте ./venv/bin/buildozer"
     exit 1
 fi
+
+build_variant() {
+    local variant="$1"
+    local spec_file="$2"
+    local suffix="$3"
+
+    echo "=== Сборка ${variant} (${spec_file}) ==="
+    BUILDOZER_SPEC_FILE="${spec_file}" "${BUILDOZER_BIN}" -v android debug
+
+    local base_apk
+    base_apk=$(ls -t bin/moleculementor-*-arm64-v8a-debug.apk | grep -v -- "-lite-" | grep -v -- "-full-" | grep -v -- "-online-only-" | head -n 1)
+
+    local final_apk="bin/moleculementor-$(grep '^version = ' "${spec_file}" | awk '{print $3}')-${suffix}-arm64-v8a-debug.apk"
+    cp -f "${base_apk}" "${final_apk}"
+    echo "=== Готово: ${final_apk} ==="
+}
+
+case "${MODE}" in
+    full)
+        build_variant "FULL" "buildozer-full.spec" "full"
+        ;;
+    lite)
+        build_variant "LITE" "buildozer-lite.spec" "lite"
+        ;;
+    online-only|online)
+        build_variant "ONLINE-ONLY" "buildozer-online.spec" "online-only"
+        ;;
+    all)
+        build_variant "FULL" "buildozer-full.spec" "full"
+        build_variant "LITE" "buildozer-lite.spec" "lite"
+        build_variant "ONLINE-ONLY" "buildozer-online.spec" "online-only"
+        ;;
+    *)
+        echo "Использование:"
+        echo "  ./build.sh full"
+        echo "  ./build.sh lite"
+        echo "  ./build.sh online-only"
+        echo "  ./build.sh all"
+        exit 1
+        ;;
+esac

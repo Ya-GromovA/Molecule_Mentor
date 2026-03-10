@@ -244,6 +244,17 @@ class ModelDownloadScreen(BaseScreen):
         """Запуск скачивания в фоновом потоке."""
         try:
             from utils.model_bootstrap import OFFLINE_MODEL_NAME
+            from utils.model_bootstrap import get_available_model_path
+
+            if get_available_model_path(OFFLINE_MODEL_NAME) is not None:
+                self.status_text = "Модель уже загружена"
+                self.download_error = ""
+                self.progress = 100
+                self.is_downloading = False
+                app = self.get_app()
+                if hasattr(app, "_refresh_offline_model_state"):
+                    app._refresh_offline_model_state()
+                return
 
             self._cancel_flag = False
             self.is_downloading = True
@@ -282,6 +293,9 @@ class ModelDownloadScreen(BaseScreen):
                             self._progress_bar.value = 100
                         self._release_wakelock()
                         self._reset_quiz_progress_once()
+                        app = self.get_app()
+                        if hasattr(app, "_refresh_offline_model_state"):
+                            app._refresh_offline_model_state()
 
                         Clock.schedule_once(lambda dt: self._finish_and_go_home(), 1.5)
 

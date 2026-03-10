@@ -110,7 +110,14 @@ class AIAssistantScreen(BaseScreen):
             size_hint_x=0.78,
             size_hint_y=None,
             height=dp(44),
+            multiline=False,
         )
+        try:
+            self._input.input_type = "text"
+            self._input.keyboard_suggestions = True
+            self._input.write_tab = False
+        except Exception:
+            pass
 
 
         harden_mdtextfield_colors(

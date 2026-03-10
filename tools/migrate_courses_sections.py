@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 
-DB = Path("/home/ulyashka_88/molecule-mentor/data/courses/courses.db")
+ROOT = Path(__file__).resolve().parents[1]
+DB = ROOT / "data" / "courses" / "courses.db"
 
 
 def main() -> int:

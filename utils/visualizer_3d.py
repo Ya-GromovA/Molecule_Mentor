@@ -50,6 +50,20 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+def _lerp_rgb(c1, c2, t: float):
+    t = _clamp(t, 0.0, 1.0)
+    return (
+        c1[0] + (c2[0] - c1[0]) * t,
+        c1[1] + (c2[1] - c1[1]) * t,
+        c1[2] + (c2[2] - c1[2]) * t,
+        1.0,
+    )
+
+
+def _luma(rgb) -> float:
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+
+
 class Visualizer3D(Widget):
 
 
@@ -464,8 +478,8 @@ class Visualizer3D(Widget):
 
         norm = 1.8
 
-        persp = 1.0 / (1.0 + (z * 0.16))
-        persp = _clamp(persp, 0.78, 1.22)
+        persp = 1.0 / (1.0 + (z * 0.08))
+        persp = _clamp(persp, 0.90, 1.12)
 
         sx = (x / norm) * (min(self.width, self.height) * 0.38) * self._scale * persp
         sy = (y / norm) * (min(self.width, self.height) * 0.38) * self._scale * persp
@@ -481,7 +495,7 @@ class Visualizer3D(Widget):
 
 
         with self.canvas:
-            Color(0.06, 0.07, 0.10, 1.0)
+            Color(0.20, 0.18, 0.28, 1.0)
             Rectangle(pos=self.pos, size=self.size)
 
         if not self.atoms:
@@ -540,30 +554,23 @@ class Visualizer3D(Widget):
                 base = _col(a.element)
 
 
-                Color(0.0, 0.0, 0.0, 0.35)
-                Ellipse(pos=(x - r + dp(2), y - r - dp(3)), size=(2 * r, 2 * r))
+                dark = _mul_rgb(base, 0.54 + 0.22 * zn)
+                light = _mul_rgb(base, 1.20 + 0.10 * zn)
 
+                for layer in range(22):
+                    t = layer / 21.0
+                    rr = r * (1.0 - 0.042 * t)
+                    col = _lerp_rgb(dark, light, t ** 0.85)
+                    Color(col[0], col[1], col[2], 1.0)
+                    Ellipse(pos=(x - rr, y - rr), size=(2 * rr, 2 * rr))
 
-                body_color = _mul_rgb(base, 0.68 + 0.32 * zn)
-                Color(body_color[0], body_color[1], body_color[2], 1.0)
-                Ellipse(pos=(x - r, y - r), size=(2 * r, 2 * r))
+                Color(1.0, 1.0, 1.0, 0.34)
+                Ellipse(pos=(x - r * 0.48, y + r * 0.20), size=(r * 0.56, r * 0.48))
+                Color(1.0, 1.0, 1.0, 0.18)
+                Ellipse(pos=(x - r * 0.40, y + r * 0.24), size=(r * 0.34, r * 0.28))
 
-
-                Color(0.0, 0.0, 0.0, 0.16)
-                Ellipse(pos=(x - r * 0.98, y - r * 1.05), size=(2 * r * 0.98, 2 * r * 0.98))
-
-
-                Color(1.0, 1.0, 1.0, 0.20)
-                highlight_r = r * 0.55
-                Ellipse(pos=(x - r * 0.40, y + r * 0.10), size=(highlight_r, highlight_r * 0.9))
-
-
-                Color(1.0, 1.0, 1.0, 0.38)
-                Ellipse(pos=(x - r * 0.25, y + r * 0.30), size=(r * 0.18, r * 0.16))
-
-
-                Color(0.0, 0.0, 0.0, 0.72)
-                Line(circle=(x, y, r), width=dp(1.1))
+                Color(0.0, 0.0, 0.0, 0.34)
+                Line(circle=(x, y, r), width=dp(0.62))
 
 
         with self.canvas.after:
@@ -571,6 +578,7 @@ class Visualizer3D(Widget):
                 x, y, depth = proj[idx]
                 a = self.atoms[idx]
                 zn = (depth - dmin) / dr
+                base = _col(a.element)
 
 
                 font_sz = dp(10) * (0.85 + 0.30 * zn) * (0.85 + 0.25 * self._scale)
@@ -584,9 +592,11 @@ class Visualizer3D(Widget):
                 ty = y - th / 2
 
 
-                Color(0.0, 0.0, 0.0, 0.60)
-                Rectangle(texture=tex, pos=(tx + dp(0.8), ty - dp(0.8)), size=tex.size)
+                atom_light = _mul_rgb(base, 1.0)
+                if _luma(atom_light) >= 0.72:
+                    text_rgba = (0.07, 0.08, 0.12, 1.0)
+                else:
+                    text_rgba = (0.98, 0.98, 1.0, 1.0)
 
-
-                Color(1.0, 1.0, 1.0, 0.95)
+                Color(*text_rgba)
                 Rectangle(texture=tex, pos=(tx, ty), size=tex.size)

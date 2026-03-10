@@ -104,6 +104,9 @@ class CategoryCard(ButtonBehavior, BoxLayout):
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             font_size=sp(14),
+            shorten=True,
+            shorten_from="right",
+            max_lines=1,
         )
         title_row.add_widget(title_label)
 
@@ -131,6 +134,9 @@ class CategoryCard(ButtonBehavior, BoxLayout):
                 font_size=sp(11),
                 size_hint_y=None,
                 height=dp(18),
+                shorten=True,
+                shorten_from="right",
+                max_lines=1,
             )
             self.add_widget(subtitle_label)
 

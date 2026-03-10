@@ -4,7 +4,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-DB = Path("/home/ulyashka_88/molecule-mentor/data/courses/courses.db")
+
+ROOT = Path(__file__).resolve().parents[1]
+DB = ROOT / "data" / "courses" / "courses.db"
 
 
 def main() -> int:
@@ -26,16 +28,23 @@ def main() -> int:
         for r in con.execute("SELECT id, title, grade, level FROM courses ORDER BY grade, level;"):
             print(f" - {r['id']} | grade={r['grade']} level={r['level']} | {r['title']}")
 
-        print("\nCounts:")
-        for t in ["sections", "topics", "topic_blocks"]:
+        print("\nCounts (actual schema):")
+        for t in ["course_sections", "course_topics", "topic_blocks", "mm_quizzes", "mm_quiz_questions"]:
             if t in tables:
                 print(f" - {t}: {scalar(f'SELECT COUNT(*) FROM {t};')}")
             else:
                 print(f" - {t}: table missing")
 
-        print("\nSanity sample topics:")
-        if "topics" in tables:
-            for r in con.execute("SELECT id, title FROM topics ORDER BY order_index LIMIT 10;"):
+        print("\nLegacy tables (for compatibility only):")
+        for t in ["sections", "topics", "quizzes", "quiz_questions"]:
+            if t in tables:
+                print(f" - {t}: {scalar(f'SELECT COUNT(*) FROM {t};')}")
+            else:
+                print(f" - {t}: table missing")
+
+        print("\nSanity sample topics (course_topics):")
+        if "course_topics" in tables:
+            for r in con.execute("SELECT id, title FROM course_topics ORDER BY id LIMIT 10;"):
                 print(f" - {r['id']} | {r['title']}")
 
         return 0
