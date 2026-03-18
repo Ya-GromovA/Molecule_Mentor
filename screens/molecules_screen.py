@@ -13,12 +13,12 @@ from kivy.metrics import dp
 from kivy.graphics import Color, Line
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Line
 from kivy.uix.screenmanager import Screen
 
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 
+from utils.molecule_db import resolve_name_formula
 from utils.textfield_colors import harden_mdtextfield_colors
 
 
@@ -324,8 +324,6 @@ def _category_for_key(key: str) -> str:
         return "Неорганика"
     return "Органика"
 
-
-_NAME_MAP: Dict[str, str] = {k: v[0] for k, v in _MOLECULE_DATA.items()}
 
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
 
@@ -776,20 +774,19 @@ class MoleculesScreen(Screen):
         for pdb in pdb_files:
             key = pdb.stem
             mol_data = _MOLECULE_DATA.get(key)
-            if mol_data:
-                ru = mol_data[0]
-                description = _sanitize_text_for_ui(mol_data[1])
-            else:
-                ru = key.replace("_", " ").strip().capitalize()
-                description = ""
+            description = _sanitize_text_for_ui((mol_data[1] if mol_data else "") or "")
 
             try:
                 counts = _counts_from_pdb(pdb)
-                formula = _formula_for_display(counts)
+                ru, formula = resolve_name_formula(key=key, pdb_path=pdb)
+                if not formula:
+                    formula = _formula_for_display(counts)
                 mass = _mass_from_counts(counts, pdb.name)
             except Exception as e:
                 Logger.exception(f"[Molecules] Failed to parse {pdb}: {e}")
-                formula = "N/A"
+                ru, formula = resolve_name_formula(key=key, pdb_path=pdb)
+                if not formula:
+                    formula = "N/A"
                 mass = None
 
             items.append(
@@ -840,7 +837,14 @@ class MoleculesScreen(Screen):
             title_line = f"{m.ru_name} ({m.formula})"
 
             def _open(m_item=m, ttl=title_line):
-                self.app.open_molecule_viewer(str(m_item.pdb_path), ttl, m_item.description)
+                self.app.open_molecule_viewer(
+                    str(m_item.pdb_path),
+                    ttl,
+                    m_item.description,
+                    molecule_key=m_item.key,
+                    ru_name=m_item.ru_name,
+                    formula=m_item.formula,
+                )
 
             card = MoleculeCard(
                 on_open=_open,

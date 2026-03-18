@@ -124,8 +124,10 @@ class FavoritesScreen(BaseScreen):
 
         try:
             from screens.molecules_screen import _MOLECULE_DATA
+            from utils.molecule_db import resolve_name_formula
         except Exception:
             _MOLECULE_DATA = {}
+            resolve_name_formula = None
 
         mol_keys = sorted(fav.molecules)
         if not mol_keys:
@@ -143,16 +145,26 @@ class FavoritesScreen(BaseScreen):
                 pdb = mol_dir / f"{k}.pdb"
                 if not pdb.exists():
                     continue
-                ru = str(_MOLECULE_DATA.get(k, (k, ""))[0])
+                if callable(resolve_name_formula):
+                    ru, formula = resolve_name_formula(key=str(k), pdb_path=pdb)
+                else:
+                    ru, formula = str(k), ""
                 desc = str(_MOLECULE_DATA.get(k, ("", ""))[1] or "")
 
-                title_line = f"{ru} ({k})"
+                title_line = f"{ru} ({formula})" if formula else ru
 
-                def _open(p=str(pdb), ttl=title_line, d=desc):
-                    app.open_molecule_viewer(p, ttl, d)
+                def _open_molecule(
+                    p=str(pdb),
+                    ttl=title_line,
+                    d=desc,
+                    key=str(k),
+                    ru_label=str(ru),
+                    frm=str(formula),
+                ):
+                    app.open_molecule_viewer(p, ttl, d, molecule_key=key, ru_name=ru_label, formula=frm)
 
                 card = _TapCard(
-                    on_open=_open,
+                    on_open=_open_molecule,
                     md_bg_color=list(card_bg),
                     theme_bg_color="Custom",
                     radius=[18, 18, 18, 18],
@@ -164,7 +176,7 @@ class FavoritesScreen(BaseScreen):
                 box = BoxLayout(orientation="vertical", spacing=dp(2))
                 box.add_widget(
                     MDLabel(
-                        text=ru,
+                        text=title_line,
                         bold=True,
                         theme_text_color="Custom",
                         text_color=text1,
@@ -215,11 +227,11 @@ class FavoritesScreen(BaseScreen):
                 name = str(it.get("name") or rid)
                 eq = str(it.get("equation") or "")
 
-                def _open(reaction_id=str(rid), title=str(name)):
+                def _open_reaction(reaction_id=str(rid), title=str(name)):
                     app.open_reaction_viewer(reaction_id, title)
 
                 card = _TapCard(
-                    on_open=_open,
+                    on_open=_open_reaction,
                     md_bg_color=list(card_bg),
                     theme_bg_color="Custom",
                     radius=[18, 18, 18, 18],

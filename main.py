@@ -1258,10 +1258,116 @@ class MoleculeMentorApp(MDApp):
         self.set_top_title("Молекулы")
         self._set_screen("molecules")
 
-    def open_molecule_viewer(self, pdb_path: str, title: str, description: str = "") -> None:
+    @staticmethod
+    def _is_formula_like(value: str) -> bool:
+        import re
+
+        s = str(value or "").strip()
+        if not s:
+            return False
+        return re.fullmatch(r"(?:[A-Z][a-z]?\d*)+", s) is not None
+
+    def _resolve_molecule_title(
+        self,
+        pdb_path: str,
+        title: str,
+        molecule_key: str = "",
+        ru_name_hint: str = "",
+        formula_hint: str = "",
+    ) -> str:
+        raw_title = str(title or "").strip()
+        key = str(molecule_key or "").strip().lower()
+        if not key:
+            try:
+                key = Path(str(pdb_path)).stem.strip().lower()
+            except Exception:
+                key = ""
+
+        ru_name = str(ru_name_hint or "").strip()
+        formula = str(formula_hint or "").strip()
+
+        try:
+            from utils.molecule_db import resolve_name_formula
+
+            db_name, db_formula = resolve_name_formula(key=key, pdb_path=Path(str(pdb_path)))
+            if db_name:
+                ru_name = db_name
+            if db_formula:
+                formula = db_formula
+        except Exception:
+            pass
+
+        if not formula and self._is_formula_like(raw_title):
+            formula = raw_title
+
+        if (not ru_name) or self._is_formula_like(ru_name):
+            try:
+                from utils.molecule_db import resolve_name_by_formula
+
+                name_by_formula = resolve_name_by_formula(formula or raw_title)
+                if name_by_formula:
+                    ru_name = name_by_formula
+            except Exception:
+                pass
+
+        if not ru_name:
+            try:
+                from screens.molecules_screen import _counts_from_pdb, _formula_for_display
+
+                if not formula:
+                    try:
+                        counts = _counts_from_pdb(Path(str(pdb_path)))
+                        formula = str(_formula_for_display(counts) or "").strip()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        if not formula and "(" in raw_title and ")" in raw_title:
+            l = raw_title.rfind("(")
+            r = raw_title.rfind(")")
+            if l != -1 and r > l:
+                formula = raw_title[l + 1:r].strip()
+
+        if not formula and self._is_formula_like(raw_title):
+            formula = raw_title
+
+        if ru_name and formula:
+            return f"{ru_name} ({formula})"
+        if ru_name:
+            return ru_name
+        if raw_title:
+            return raw_title
+        if key:
+            return key
+        return "Молекула"
+
+    def open_molecule_viewer(
+        self,
+        pdb_path: str,
+        title: str,
+        description: str = "",
+        molecule_key: str = "",
+        ru_name: str = "",
+        formula: str = "",
+    ) -> None:
         """Открыть 3D просмотр молекулы"""
-        self.nav_state = {"pdb_path": pdb_path, "title": title, "description": description}
-        self.set_top_title(title)
+        display_title = self._resolve_molecule_title(
+            pdb_path,
+            title,
+            molecule_key=molecule_key,
+            ru_name_hint=ru_name,
+            formula_hint=formula,
+        )
+        self.nav_state = {
+            "pdb_path": pdb_path,
+            "title": display_title,
+            "description": description,
+            "molecule_key": str(molecule_key or "").strip(),
+            "ru_name": str(ru_name or "").strip(),
+            "formula": str(formula or "").strip(),
+        }
+        self.set_top_title(display_title)
         self._set_screen("molecule_viewer")
 
     def open_molecule_editor(self, pdb_path: str, title: str) -> None:

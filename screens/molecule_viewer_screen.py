@@ -51,9 +51,27 @@ class MoleculeViewerScreen(Screen):
         title = nav.get("title", "Молекула")
         description = nav.get("description", "")
 
+        display_title = str(title or "Молекула")
+        try:
+            if pdb_path and hasattr(self.app, "_resolve_molecule_title"):
+                molecule_key = str(nav.get("molecule_key") or "").strip()
+                ru_name = str(nav.get("ru_name") or "").strip()
+                formula = str(nav.get("formula") or "").strip()
+                display_title = self.app._resolve_molecule_title(
+                    str(pdb_path),
+                    str(title or ""),
+                    molecule_key=molecule_key,
+                    ru_name_hint=ru_name,
+                    formula_hint=formula,
+                )
+                nav["title"] = display_title
+                self.app.nav_state = nav
+        except Exception:
+            display_title = str(title or "Молекула")
+
 
         try:
-            self.app.set_top_title(title)
+            self.app.set_top_title(display_title)
         except Exception:
             pass
 

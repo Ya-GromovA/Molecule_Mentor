@@ -5,7 +5,65 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from utils.pdb_tools import load_pdb_file, formula_hill, to_subscript
+try:
+    from utils.pdb_tools import load_pdb_file, formula_hill, to_subscript
+except Exception:
+    import re
+
+    _EL_RE = re.compile(r"^[A-Z][a-z]?$")
+
+    def _norm_el(raw: str) -> str:
+        s = str(raw or "").strip()
+        if not s:
+            return ""
+        s = s[:2]
+        s = s[0].upper() + (s[1:].lower() if len(s) > 1 else "")
+        return s if _EL_RE.fullmatch(s) else ""
+
+    def load_pdb_file(pdb_path: Path) -> List[Dict[str, str]]:
+        atoms: List[Dict[str, str]] = []
+        p = Path(str(pdb_path))
+        if not p.exists():
+            return atoms
+        with p.open("r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if not (line.startswith("ATOM") or line.startswith("HETATM")):
+                    continue
+                el = ""
+                if len(line) >= 78:
+                    el = _norm_el(line[76:78])
+                if not el:
+                    parts = line.split()
+                    if parts:
+                        el = _norm_el(parts[-1])
+                if el:
+                    atoms.append({"element": el})
+        return atoms
+
+    def formula_hill(atoms_dicts: List[Dict[str, str]]) -> str:
+        counts: Dict[str, int] = {}
+        for atom in atoms_dicts:
+            el = _norm_el(str(atom.get("element", "")))
+            if not el:
+                continue
+            counts[el] = counts.get(el, 0) + 1
+        if not counts:
+            return ""
+
+        parts: List[str] = []
+        if "C" in counts:
+            c = counts.pop("C")
+            parts.append(f"C{c if c > 1 else ''}")
+            if "H" in counts:
+                h = counts.pop("H")
+                parts.append(f"H{h if h > 1 else ''}")
+        for el in sorted(counts.keys()):
+            n = counts[el]
+            parts.append(f"{el}{n if n > 1 else ''}")
+        return "".join(parts)
+
+    def to_subscript(formula: str) -> str:
+        return str(formula or "")
 
 
 
@@ -140,3 +198,77 @@ MOLECULES: List[MoleculeDef] = scan_molecules()
 KEY_INDEX: Dict[str, MoleculeDef] = {m.key: m for m in MOLECULES}
 NAME_INDEX: Dict[str, MoleculeDef] = {m.name.lower(): m for m in MOLECULES}
 FORMULA_INDEX: Dict[str, MoleculeDef] = {m.formula: m for m in MOLECULES}
+
+
+def _formula_canon(value: str) -> str:
+    return "".join(str(value or "").split()).upper()
+
+
+def _title_from_key(key: str) -> str:
+    txt = str(key or "").strip().replace("_", " ")
+    if not txt:
+        return "Молекула"
+    return txt.capitalize()
+
+
+def _catalog_name_fallback(key: str) -> str:
+    k = str(key or "").strip().lower()
+    if not k:
+        return ""
+    try:
+        from screens.molecules_screen import _MOLECULE_DATA
+
+        name = str((_MOLECULE_DATA.get(k, ("", ""))[0] or "")).strip()
+        if name:
+            return name
+    except Exception:
+        pass
+    return ""
+
+
+def resolve_name_formula(key: str = "", pdb_path: Optional[Path] = None) -> Tuple[str, str]:
+    k = str(key or "").strip().lower()
+    ru_name = ""
+    formula = ""
+
+    mol = KEY_INDEX.get(k)
+    if mol is not None:
+        ru_name = str(getattr(mol, "name", "") or "").strip()
+        formula = str(getattr(mol, "formula", "") or "").strip()
+
+    if not formula and pdb_path is not None:
+        try:
+            atoms_dicts = load_pdb_file(Path(str(pdb_path)))
+            formula = str(formula_hill(atoms_dicts) or "").strip()
+        except Exception:
+            pass
+
+    fallback_name = _catalog_name_fallback(k)
+    if fallback_name:
+        if not ru_name:
+            ru_name = fallback_name
+        elif ru_name.strip().lower() == k:
+            ru_name = fallback_name
+
+    if not ru_name:
+        ru_name = _title_from_key(k)
+
+    return ru_name, formula
+
+
+def resolve_name_by_formula(formula: str) -> str:
+    raw = str(formula or "").strip()
+    if not raw:
+        return ""
+
+    mol = FORMULA_INDEX.get(raw)
+    if mol is not None:
+        return str(getattr(mol, "name", "") or "").strip()
+
+    canon = _formula_canon(raw)
+    if not canon:
+        return ""
+    for f_key, f_mol in FORMULA_INDEX.items():
+        if _formula_canon(f_key) == canon:
+            return str(getattr(f_mol, "name", "") or "").strip()
+    return ""
