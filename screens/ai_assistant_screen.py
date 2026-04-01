@@ -31,6 +31,8 @@ class AIAssistantScreen(BaseScreen):
     _content: Optional[BoxLayout] = None
     _input_row: Optional[BoxLayout] = None
     _keyboard_ev = None
+    _answer_timeout_ev = None
+    _active_request_id: int = 0
     _last_keyboard_height: int = 0
     _row_height: float = 0
 
@@ -64,6 +66,12 @@ class AIAssistantScreen(BaseScreen):
             except Exception:
                 pass
             self._keyboard_ev = None
+        if self._answer_timeout_ev is not None:
+            try:
+                self._answer_timeout_ev.cancel()
+            except Exception:
+                pass
+            self._answer_timeout_ev = None
         return super().on_pre_leave(*args)
 
     def _render(self):
@@ -263,6 +271,16 @@ class AIAssistantScreen(BaseScreen):
             if t and t != "Думаю..."
         ]
 
+        self._active_request_id += 1
+        request_id = int(self._active_request_id)
+
+        if self._answer_timeout_ev is not None:
+            try:
+                self._answer_timeout_ev.cancel()
+            except Exception:
+                pass
+        self._answer_timeout_ev = Clock.schedule_once(lambda *_: self._on_answer_timeout(request_id), 25)
+
         fut = app._executor.submit(engine.ask, text, history_for_engine)
 
         def _on_done(_f):
@@ -271,6 +289,10 @@ class AIAssistantScreen(BaseScreen):
             except Exception as e:
                 log.exception("AI request failed: %s", e)
                 ans = f"Ошибка: {e}"
+
+
+            if request_id != self._active_request_id:
+                return
 
 
             if app.ai_history and app.ai_history[-1] == ("assistant", "Думаю..."):
@@ -283,5 +305,27 @@ class AIAssistantScreen(BaseScreen):
         fut.add_done_callback(_on_done)
 
     def _after_answer(self):
+        if self._answer_timeout_ev is not None:
+            try:
+                self._answer_timeout_ev.cancel()
+            except Exception:
+                pass
+            self._answer_timeout_ev = None
+        self._sync_history(scroll_to_bottom=True)
+        self._send.disabled = False
+
+    def _on_answer_timeout(self, request_id: int) -> None:
+        if request_id != self._active_request_id:
+            return
+
+        app = self.get_app()
+        if hasattr(app, "ai_history") and app.ai_history and app.ai_history[-1] == ("assistant", "Думаю..."):
+            app.ai_history[-1] = (
+                "assistant",
+                "Ответ занял слишком много времени. Переключаюсь на оффлайн-режим, попробуйте вопрос еще раз.",
+            )
+
+        self._active_request_id += 1
+        self._answer_timeout_ev = None
         self._sync_history(scroll_to_bottom=True)
         self._send.disabled = False

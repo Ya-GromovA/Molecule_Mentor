@@ -11,7 +11,7 @@ import time
 import ctypes
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Callable
 from urllib.parse import quote
 
 import requests
@@ -57,7 +57,19 @@ class AIEngine:
             "Соли — это ионные соединения, обычно продукты реакции кислоты и основания. "
             "Пример: NaCl."
         ),
+        "спирт": (
+            "Спирт — это органическое соединение, содержащее гидроксильную группу -OH, "
+            "связанную с углеводородным радикалом. Общая формула одноатомных предельных спиртов: CnH2n+1OH (или R-OH). "
+            "Примеры: метанол CH3OH, этанол C2H5OH."
+        ),
+        "спирты": (
+            "Спирты — это класс органических веществ с гидроксильной группой -OH. "
+            "Общая формула одноатомных предельных спиртов: CnH2n+1OH (или R-OH). "
+            "Примеры: CH3OH, C2H5OH."
+        ),
     }
+
+    CHEM_REFERENCE_FILE = "data/ai/chem_reference.json"
 
     @staticmethod
     def _log_llama_runtime(msg: str) -> None:
@@ -89,15 +101,83 @@ class AIEngine:
         self._llama_err = ""
         self._online_err = ""
         self._online_ok = False
+        self._mode_change_cb: Optional[Callable[[str], None]] = None
 
 
         self._retrieval_cache: Dict[str, Tuple[float, str, list[str]]] = {}
         self._retrieval_cache_ttl_sec = int(os.environ.get("MM_RETRIEVAL_CACHE_TTL", "86400"))
         self._local_chem_snippets = self._load_local_chem_snippets()
+        self._chem_reference, self._known_nonexistent_terms = self._load_chem_reference_data()
+        self._chem_ref_index = self._build_chem_ref_index()
 
         self._stop = False
         self._health_thread = threading.Thread(target=self._health_loop, daemon=True)
         self._health_thread.start()
+
+    def _load_chem_reference_data(self) -> Tuple[Dict[str, Dict[str, Any]], set[str]]:
+        ref: Dict[str, Dict[str, Any]] = {}
+        nonexistent: set[str] = set()
+        try:
+            root = Path(__file__).resolve().parents[1]
+            p = root / self.CHEM_REFERENCE_FILE
+            if not p.exists():
+                return ref, nonexistent
+
+            data = json.loads(p.read_text(encoding="utf-8"))
+            terms = data.get("terms", {}) if isinstance(data, dict) else {}
+            for k, v in (terms.items() if isinstance(terms, dict) else []):
+                key = self._normalize_term_key(str(k))
+                if not key or not isinstance(v, dict):
+                    continue
+                ref[key] = {
+                    "formula": str(v.get("formula", "")).strip(),
+                    "class": str(v.get("class", "")).strip(),
+                    "definition": str(v.get("definition", "")).strip(),
+                    "examples": [str(x).strip() for x in (v.get("examples", []) or []) if str(x).strip()],
+                    "aliases": [str(x).strip() for x in (v.get("aliases", []) or []) if str(x).strip()],
+                }
+
+            raw_non = data.get("nonexistent_terms", []) if isinstance(data, dict) else []
+            for t in (raw_non or []):
+                n = self._normalize_term_key(str(t))
+                if n:
+                    nonexistent.add(n)
+        except Exception:
+            return {}, set()
+
+        return ref, nonexistent
+
+    def _build_chem_ref_index(self) -> Dict[str, str]:
+        idx: Dict[str, str] = {}
+
+        def _variants_for(term: str) -> set[str]:
+            out = {term}
+            # Простейшие русские словоформы (вопросы часто в родительном падеже:
+            # "формула магния", "свойства кальция").
+            if " " in term:
+                return out
+            if term.endswith("ий") and len(term) > 3:
+                stem = term[:-2]
+                out.update({stem + "ия", stem + "ию", stem + "ием", stem + "ии"})
+            if term.endswith("й") and len(term) > 2:
+                stem = term[:-1]
+                out.update({stem + "я", stem + "ю", stem + "ем", stem + "е"})
+            if term.endswith("а") and len(term) > 2:
+                stem = term[:-1]
+                out.update({stem + "ы", stem + "е", stem + "у", stem + "ой"})
+            return out
+
+        for canon, item in self._chem_reference.items():
+            c = self._normalize_term_key(canon)
+            if c:
+                for v in _variants_for(c):
+                    idx[v] = canon
+            for a in item.get("aliases", []) or []:
+                an = self._normalize_term_key(str(a))
+                if an:
+                    for v in _variants_for(an):
+                        idx[v] = canon
+        return idx
 
 
     def stop(self) -> None:
@@ -105,6 +185,10 @@ class AIEngine:
 
         if self._health_thread and self._health_thread.is_alive():
             self._health_thread.join(timeout=2.0)
+
+    def set_mode_change_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        with self._lock:
+            self._mode_change_cb = callback
 
     def mode(self) -> str:
         with self._lock:
@@ -123,7 +207,24 @@ class AIEngine:
         hf_exists = bool(token)
         offline_exists = os.path.exists(self.offline_model_path) and os.path.getsize(self.offline_model_path) > 0
 
+        # Живая проверка для индикатора в UI: обновляем режим сразу,
+        # не дожидаясь следующего цикла фонового health-loop.
+        live_internet = self._is_internet_ok(
+            timeout=0.55,
+            hosts=[("1.1.1.1", 53), ("router.huggingface.co", 443)],
+        )
+
         with self._lock:
+            self._online_ok = bool(live_internet and hf_exists)
+            self._online_err = "" if live_internet else "internet unavailable"
+
+            if self._online_ok:
+                self._switch("ONLINE")
+            elif offline_exists:
+                self._switch("OFFLINE")
+            else:
+                self._switch("N/A")
+
             mode = self._mode
             online_ok = self._online_ok
             online_err = self._online_err
@@ -260,6 +361,12 @@ class AIEngine:
         "substance": "вещество",
         "substances": "вещества",
         "properties": "свойства",
+        "alcohol": "спирт",
+        "alcohols": "спирты",
+        "spirit": "спирт",
+        "spirits": "спирты",
+        "spirt": "спирт",
+        "cpirt": "спирт",
         "property": "свойство",
         "mixture": "смесь",
         "mixtures": "смеси",
@@ -479,6 +586,8 @@ class AIEngine:
 
 
     TYPO_FIXES = {
+        "cpirt": "спирт",
+        "spirt": "спирт",
         "спиры": "спирты",
         "спиров": "спиртов",
         "спирам": "спиртам",
@@ -557,6 +666,16 @@ class AIEngine:
         a = (answer or "").lower()
         if "кофеин" in a and "кофеин" not in q:
             return "Я не знаю точного ответа."
+        return answer
+
+    @staticmethod
+    def _guard_nonexistent_formula_mix(question: str, answer: str) -> str:
+        a = (answer or "")
+        al = a.lower()
+        says_nonexistent = any(x in al for x in ("не существует", "несуществ", "неизвестно", "нет такого соединения"))
+        has_formula = re.search(r"\b(?:[A-Z][a-z]?\d*){2,}[+-]?\b", a) is not None
+        if says_nonexistent and has_formula:
+            return "Я не знаю точного ответа. Похоже, это соединение не относится к стандартным веществам школьного курса."
         return answer
 
     def _verifier_prompt_ru(self) -> str:
@@ -927,6 +1046,37 @@ class AIEngine:
             text,
         )
 
+        # Если слово смешанное (кириллица+латиница), доп. транслитерируем
+        # оставшиеся латинские буквы в кириллицу. Это чинит кейсы типа
+        # "formyла" -> "формула".
+        translit_map = {
+            "a": "а", "b": "б", "c": "с", "d": "д", "e": "е", "f": "ф",
+            "g": "г", "h": "х", "i": "и", "j": "й", "k": "к", "l": "л",
+            "m": "м", "n": "н", "o": "о", "p": "п", "q": "к", "r": "р",
+            "s": "с", "t": "т", "u": "у", "v": "в", "w": "в", "x": "кс",
+            "y": "у", "z": "з",
+            "A": "А", "B": "Б", "C": "С", "D": "Д", "E": "Е", "F": "Ф",
+            "G": "Г", "H": "Х", "I": "И", "J": "Й", "K": "К", "L": "Л",
+            "M": "М", "N": "Н", "O": "О", "P": "П", "Q": "К", "R": "Р",
+            "S": "С", "T": "Т", "U": "У", "V": "В", "W": "В", "X": "КС",
+            "Y": "У", "Z": "З",
+        }
+
+        def _fix_mixed_word(m):
+            w = m.group(0)
+            has_cyr = re.search(r"[А-Яа-яЁё]", w) is not None
+            has_lat = re.search(r"[A-Za-z]", w) is not None
+            if not (has_cyr and has_lat):
+                return w
+            if self._RE_FORMULA_TOKEN.fullmatch(w):
+                return w
+            out = []
+            for ch in w:
+                out.append(translit_map.get(ch, ch))
+            return "".join(out)
+
+        text = re.sub(r"[A-Za-zА-Яа-яЁё]{3,}", _fix_mixed_word, text)
+
 
         allowed_chars = r"\x00-\x7F\u0400-\u04FF\s.,;:!?(){}\"'/\\|+<>=\-\[\]_"
         text = re.sub(r"[^" + allowed_chars + r"]", "", text)
@@ -1008,13 +1158,143 @@ class AIEngine:
         t = re.sub(r"\s{2,}", " ", t).strip()
         return t
 
+    def _extract_reference_key(self, text: str) -> str:
+        q = self._normalize_term_key(text)
+        if not q:
+            return ""
+
+        if q in self._chem_ref_index:
+            return self._chem_ref_index[q]
+
+        term = self._normalize_term_key(self._extract_term_ru(text))
+        if term in self._chem_ref_index:
+            return self._chem_ref_index[term]
+
+        if q.endswith(" это"):
+            k = q[:-4].strip()
+            if k in self._chem_ref_index:
+                return self._chem_ref_index[k]
+        if q.startswith("это "):
+            k = q[4:].strip()
+            if k in self._chem_ref_index:
+                return self._chem_ref_index[k]
+
+        parts = q.split()
+        if parts:
+            tail = " ".join(parts[-2:])
+            if tail in self._chem_ref_index:
+                return self._chem_ref_index[tail]
+            if parts[-1] in self._chem_ref_index:
+                return self._chem_ref_index[parts[-1]]
+
+        # Поиск термина как подстроки в вопросе (с приоритетом самой длинной фразы),
+        # чтобы корректно ловить формулировки вида:
+        # "что такое магний, назови формулу".
+        best = ""
+        for k in self._chem_ref_index.keys():
+            if not k:
+                continue
+            if len(k) <= len(best):
+                continue
+            if re.search(rf"(?<![а-яa-z0-9]){re.escape(k)}(?![а-яa-z0-9])", q):
+                best = k
+        if best:
+            return self._chem_ref_index[best]
+
+        return ""
+
+    def _reference_answer_for(self, text: str) -> Optional[str]:
+        key = self._extract_reference_key(text)
+        if not key:
+            return None
+        item = self._chem_reference.get(key)
+        if not item:
+            return None
+
+        definition = str(item.get("definition", "")).strip()
+        formula = str(item.get("formula", "")).strip()
+        cls = str(item.get("class", "")).strip()
+        examples = [str(x).strip() for x in (item.get("examples", []) or []) if str(x).strip()]
+        parts: list[str] = []
+        if definition:
+            parts.append(definition)
+        if cls:
+            parts.append(f"Класс: {cls}.")
+        if formula:
+            if re.fullmatch(r"[A-Z][a-z]?", formula):
+                parts.append(f"Химический символ: {formula}.")
+            else:
+                parts.append(f"Формула: {formula}.")
+        if examples:
+            parts.append("Примеры: " + ", ".join(examples[:2]) + ".")
+        out = " ".join(parts).strip()
+        return out or None
+
+    def _reference_nonexistent_answer(self, text: str) -> Optional[str]:
+        qn = self._normalize_term_key(text)
+        if not qn:
+            return None
+        for term in self._known_nonexistent_terms:
+            if term in qn:
+                return (
+                    f"Термин «{term}» не относится к стандартным веществам школьного курса химии. "
+                    "Уточните корректное название вещества или его формулу."
+                )
+        return None
+
+    def _validate_with_reference(self, question: str, answer: str) -> str:
+        ref = self._reference_answer_for(question)
+        if not ref:
+            missing = self._reference_nonexistent_answer(question)
+            if missing:
+                return missing
+            return answer
+
+        al = (answer or "").lower()
+        if any(x in al for x in ("не существует", "несуществ", "нет такого соединения")):
+            return ref
+
+        key = self._extract_reference_key(question)
+        formula = str(self._chem_reference.get(key, {}).get("formula", "")).strip()
+        if formula:
+            has_formula_token = re.search(r"\b(?:[A-Z][a-z]?\d*){2,}[+-]?\b", answer or "") is not None
+            formula_ok = formula.lower() in (answer or "").lower()
+            if has_formula_token and not formula_ok:
+                return ref
+
+        return answer
+
     def _offline_curated_answer(self, text: str) -> Optional[str]:
+        ref_answer = self._reference_answer_for(text)
+        if ref_answer:
+            return ref_answer
+
+        nonexist = self._reference_nonexistent_answer(text)
+        if nonexist:
+            return nonexist
+
         q = (text or "").strip()
         if not q:
             return None
         ql = q.lower()
+        qn = self._normalize_term_key(q)
+
+        if qn in self.OFFLINE_CHEM_DEFS_RU:
+            return self.OFFLINE_CHEM_DEFS_RU[qn]
+
+        if qn.endswith(" это"):
+            k = qn[:-4].strip()
+            if k in self.OFFLINE_CHEM_DEFS_RU:
+                return self.OFFLINE_CHEM_DEFS_RU[k]
+        if qn.startswith("это "):
+            k = qn[4:].strip()
+            if k in self.OFFLINE_CHEM_DEFS_RU:
+                return self.OFFLINE_CHEM_DEFS_RU[k]
+
         triggers = ("что такое ", "что значит ", "дай определение ", "определи ")
         if not any(ql.startswith(t) for t in triggers):
+            if len(qn.split()) <= 2 and qn in self.OFFLINE_CHEM_DEFS_RU:
+                return self.OFFLINE_CHEM_DEFS_RU[qn]
             return None
 
         term = self._extract_term_ru(q)
@@ -1029,12 +1309,24 @@ class AIEngine:
             "бензен": "бензол",
             "ацетилсалициловая кислота": "аспирин",
             "ацетилсалициловая": "аспирин",
+            "алкоголь": "спирт",
+            "этанол": "спирт",
         }
         alias = aliases.get(key)
         if alias and alias in self.OFFLINE_CHEM_DEFS_RU:
             return self.OFFLINE_CHEM_DEFS_RU[alias]
 
         return None
+
+    def prewarm_offline(self) -> None:
+        """Прогревает оффлайн-модель в фоне, чтобы первый ответ был быстрее."""
+        if not os.path.exists(self.offline_model_path):
+            return
+        try:
+            self._ensure_llama()
+        except Exception as e:
+            with self._lock:
+                self._llama_err = str(e)
 
 
     def ask(self, text: str, history: Optional[list[dict]] = None, timeout_sec: int = 20, verify: bool = True, max_tokens: int = 0) -> str:
@@ -1047,6 +1339,22 @@ class AIEngine:
 
         m = self.mode()
         is_offline = m == "OFFLINE"
+
+        # Вопросы про формулу лучше отдавать детерминированно из справочника,
+        # чтобы не было фантазий и неверных падежей/чисел.
+        if "формул" in self._normalize_term_key(text):
+            formula_ref = self._reference_answer_for(text)
+            if formula_ref:
+                return formula_ref
+
+        if is_offline or m == "N/A":
+            quick_ref = self._reference_answer_for(text)
+            if quick_ref:
+                return quick_ref
+            quick_nonexist = self._reference_nonexistent_answer(text)
+            if quick_nonexist:
+                return quick_nonexist
+
         self._max_tokens_override = max_tokens
 
 
@@ -1114,9 +1422,27 @@ class AIEngine:
 
             online_error = None
             offline_error = None
+            online_allowed = False
 
 
-            if m == "ONLINE" or (m == "N/A" and self._is_internet_ok(timeout=2.0)):
+            if m == "ONLINE":
+                online_allowed = self._is_internet_ok(timeout=1.2)
+            elif m == "N/A":
+                online_allowed = self._is_internet_ok(timeout=2.0)
+
+            if m == "ONLINE" and not online_allowed:
+                with self._lock:
+                    self._online_ok = False
+                    self._online_err = "internet unavailable"
+                    self._internet_ok_cached = False
+                    self._internet_fail_streak = 1
+                self._switch("OFFLINE")
+                is_offline = True
+                quick = self._offline_curated_answer(text)
+                if quick:
+                    return quick
+
+            if online_allowed:
                 try:
                     return self._ask_online(messages, timeout_sec=timeout_sec)
                 except Exception as e:
@@ -1128,6 +1454,9 @@ class AIEngine:
                         self._internet_fail_streak = 1
                     self._switch("OFFLINE")
                     is_offline = True
+                    quick = self._offline_curated_answer(text)
+                    if quick:
+                        return quick
 
 
             if m == "OFFLINE" or is_offline or m == "N/A":
@@ -1205,6 +1534,9 @@ class AIEngine:
 
 
         answer = self._guard_unrelated(text, answer)
+        answer = self._guard_nonexistent_formula_mix(text, answer)
+        if is_offline:
+            answer = self._validate_with_reference(text, answer)
         answer = self._trim_if_uncertain(answer)
 
         low_answer = (answer or "").lower()
@@ -1215,9 +1547,30 @@ class AIEngine:
             or low_answer.startswith("ии недоступен")
         )
 
-        if (not is_offline) and (not is_tech_error):
+        if not is_tech_error:
             answer = self._force_ru_terms(answer)
             answer = self._fix_typos(answer)
+
+        if is_offline and self._needs_russian_rewrite(answer) and not is_tech_error:
+            repaired = self._translate_english_words(answer)
+            repaired = self._fix_cyrillic_confusables(repaired)
+            if repaired and not self._needs_russian_rewrite(repaired):
+                answer = repaired
+            else:
+                curated = self._offline_curated_answer(text)
+                if curated:
+                    answer = curated
+                elif self._is_answer_quality_good(repaired):
+                    answer = repaired
+                else:
+                    # Не проваливаемся слишком часто в «не знаю»:
+                    # возвращаем наиболее полезную очищенную версию,
+                    # а отказ даём только если ответ совсем пустой/короткий.
+                    cleaned = (repaired or answer or "").strip()
+                    if len(cleaned) >= 24:
+                        answer = cleaned
+                    else:
+                        answer = "Не удалось надежно распознать ответ оффлайн-модели. Переформулируйте вопрос короче."
 
         answer = self._sanitize_for_ui(answer)
         answer = self._fix_cyrillic_confusables(answer)
@@ -1229,10 +1582,19 @@ class AIEngine:
 
 
     def _switch(self, mode: str) -> None:
+        callback: Optional[Callable[[str], None]] = None
+        changed = False
         with self._lock:
             if self._mode != mode:
                 self._mode = mode
                 self._last_switch = time.time()
+                callback = self._mode_change_cb
+                changed = True
+        if changed and callback:
+            try:
+                callback(mode)
+            except Exception:
+                pass
 
     def _read_token(self) -> str:
         if self._hf_token:
@@ -1243,14 +1605,21 @@ class AIEngine:
         self._hf_token = tok
         return tok
 
-    def _is_internet_ok(self, timeout: float = 3.0) -> bool:
+    def _is_internet_ok(self, timeout: float = 3.0, hosts: Optional[list[tuple[str, int]]] = None) -> bool:
         """Проверяет доступность интернета через socket connection."""
 
-        hosts = [
-            ("router.huggingface.co", 443),
-            ("huggingface.co", 443),
-            ("google.com", 443),
-        ]
+        android_connected = self._android_network_connected()
+        if android_connected is False:
+            return False
+
+        if hosts is None:
+            hosts = [
+                ("1.1.1.1", 53),
+                ("8.8.8.8", 53),
+                ("router.huggingface.co", 443),
+                ("huggingface.co", 443),
+                ("google.com", 443),
+            ]
         for host, port in hosts:
             try:
                 with socket.create_connection((host, port), timeout=timeout):
@@ -1258,6 +1627,50 @@ class AIEngine:
             except OSError:
                 continue
         return False
+
+    def _android_network_connected(self) -> Optional[bool]:
+        """Быстрая проверка наличия активной сети на Android (без DNS)."""
+        if "ANDROID_ARGUMENT" not in os.environ and "ANDROID_PRIVATE" not in os.environ:
+            return None
+
+        try:
+            from jnius import autoclass
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Context = autoclass("android.content.Context")
+            BuildVersion = autoclass("android.os.Build$VERSION")
+
+            activity = PythonActivity.mActivity
+            if activity is None:
+                return None
+
+            cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
+            if cm is None:
+                return None
+
+            sdk_int = int(getattr(BuildVersion, "SDK_INT", 0) or 0)
+            if sdk_int >= 23:
+                NetworkCapabilities = autoclass("android.net.NetworkCapabilities")
+                network = cm.getActiveNetwork()
+                if network is None:
+                    return False
+
+                caps = cm.getNetworkCapabilities(network)
+                if caps is None:
+                    return False
+
+                has_internet = bool(caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+                has_transport = bool(
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                    or caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    or caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                )
+                return has_internet and has_transport
+
+            info = cm.getActiveNetworkInfo()
+            return bool(info and info.isConnected())
+        except Exception:
+            return None
 
     def _find_llama_lib_dir(self) -> str:
         """Ищет директорию с библиотекой libllama.so"""
@@ -1461,6 +1874,16 @@ class AIEngine:
 
     def _ask_offline(self, messages: list[dict]) -> str:
 
+        question = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                question = (m.get("content") or "").strip()
+                break
+
+        curated = self._offline_curated_answer(question)
+        if curated:
+            return curated
+
         if not os.path.exists(self.offline_model_path):
             return f"Оффлайн-модель не найдена: {self.offline_model_path}"
 
@@ -1516,11 +1939,10 @@ class AIEngine:
 
             return system_part + convo_part
 
-        base_tokens = getattr(self, "_max_tokens_override", 0) or 400
+        base_tokens = getattr(self, "_max_tokens_override", 0) or 240
         plans = [
-            (_trim_for_offline(messages, 2, False), min(base_tokens, 160)),
-            (_trim_for_offline(messages, 1, False), 120),
-            (_trim_for_offline(messages, 1, True), 96),
+            (_trim_for_offline(messages, 1, True), min(base_tokens, 120)),
+            (_trim_for_offline(messages, 0, True), 96),
             (_trim_for_offline(messages, 0, True), 80),
         ]
 
@@ -1535,6 +1957,15 @@ class AIEngine:
                     max_tokens=plan_tokens,
                 )
                 answer = (res["choices"][0]["message"]["content"] or "").strip()
+
+                if self._needs_russian_rewrite(answer):
+                    answer = self._translate_english_words(answer)
+
+                if self._needs_russian_rewrite(answer):
+                    curated_fallback = self._offline_curated_answer(question)
+                    if curated_fallback:
+                        return curated_fallback
+
                 return answer
             except Exception as e:
                 last_err = str(e)
@@ -1622,4 +2053,4 @@ class AIEngine:
                     self._online_err = str(e)
                 self._switch("N/A")
 
-            time.sleep(7.0)
+            time.sleep(3.0)

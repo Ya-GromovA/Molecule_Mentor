@@ -968,6 +968,7 @@ class MoleculeMentorApp(MDApp):
             hf_token_path=str(HF_TOKEN),
             offline_model_path=offline_target,
         )
+        self._ai_engine.set_mode_change_callback(self._on_engine_mode_change)
 
 
         if self.is_online_only:
@@ -982,9 +983,11 @@ class MoleculeMentorApp(MDApp):
             else:
                 print("[STARTUP] модель уже доступна")
                 self._refresh_ai_status_async()
+                if self._ai_engine:
+                    self._executor.submit(self._ai_engine.prewarm_offline)
 
 
-        Clock.schedule_interval(lambda *_: self._refresh_ai_status_async(), 15.0)
+        Clock.schedule_interval(lambda *_: self._refresh_ai_status_async(), 7.0)
         self._refresh_ai_status_async()
 
 
@@ -1638,11 +1641,18 @@ class MoleculeMentorApp(MDApp):
 
         fut = self._executor.submit(self._ai_engine.diagnose)
 
-        def on_done(_dt):
+        def _apply_result():
             try:
                 d = fut.result()
                 mode = str(getattr(d, "mode", "N/A"))
-                if mode == "N/A" and not getattr(d, "online_reachable", True):
+                online_ok = bool(getattr(d, "online_reachable", False))
+                offline_ok = bool(getattr(d, "offline_model_exists", False) and getattr(d, "llama_import_ok", False))
+
+                if not online_ok and offline_ok:
+                    mode = "OFFLINE"
+                elif online_ok:
+                    mode = "ONLINE"
+                elif mode == "N/A" and bool(getattr(d, "offline_model_exists", False)):
                     mode = "OFFLINE"
                 self.ai_status = mode
 
@@ -1660,7 +1670,34 @@ class MoleculeMentorApp(MDApp):
                 self.ai_status_phase = "na"
                 self.ai_status_display = "НЕТ"
 
-        Clock.schedule_once(on_done, 0)
+        fut.add_done_callback(lambda _f: Clock.schedule_once(lambda *_: _apply_result(), 0))
+
+    def _on_engine_mode_change(self, mode: str) -> None:
+        """Мгновенно синхронизирует UI-статус при переключении режима движка."""
+
+        if str(mode or "") == "OFFLINE" and self._ai_engine:
+            try:
+                self._executor.submit(self._ai_engine.prewarm_offline)
+            except Exception:
+                pass
+
+        def _apply(_dt):
+            m = str(mode or "N/A")
+            self.ai_status = m
+            if m == "ONLINE":
+                self.ai_status_phase = "online"
+                self.ai_status_display = "ОНЛ"
+            elif m == "OFFLINE":
+                self.ai_status_phase = "offline"
+                self.ai_status_display = "ОФФ"
+            elif m == "N/A":
+                self.ai_status_phase = "na"
+                self.ai_status_display = "НЕТ"
+            else:
+                self.ai_status_phase = "checking"
+                self.ai_status_display = "..."
+
+        Clock.schedule_once(_apply, 0)
 
     def on_ai_status(self, _inst, value: str) -> None:
         """Лёгкий пульс индикатора статуса ИИ."""
@@ -1687,9 +1724,12 @@ class MoleculeMentorApp(MDApp):
             self.toast("ИИ ещё не готов")
             return
 
+        # Сначала освежаем индикатор статуса, чтобы окно диагностики
+        # не расходилось с цветом иконки.
+        self._refresh_ai_status_async()
         fut = self._executor.submit(self._ai_engine.diagnose)
 
-        def on_done(_dt):
+        def _on_done_ui():
             try:
                 d = fut.result()
                 data = asdict(d)
@@ -1698,6 +1738,20 @@ class MoleculeMentorApp(MDApp):
                 mode = data.get('mode', 'N/A')
                 online_ok = data.get('online_reachable', False)
                 offline_ok = data.get('offline_model_exists', False) and data.get('llama_import_ok', False)
+
+                ui_mode = "N/A"
+                if self.ai_status_phase == "online":
+                    ui_mode = "ONLINE"
+                elif self.ai_status_phase == "offline":
+                    ui_mode = "OFFLINE"
+                if ui_mode != "N/A":
+                    mode = ui_mode
+                    online_ok = mode == "ONLINE"
+
+                if not online_ok and offline_ok:
+                    mode = "OFFLINE"
+                elif online_ok:
+                    mode = "ONLINE"
 
 
                 if mode == "ONLINE":
@@ -1766,7 +1820,7 @@ class MoleculeMentorApp(MDApp):
             )
             self._ai_dialog.open()
 
-        Clock.schedule_once(on_done, 0)
+        fut.add_done_callback(lambda _f: Clock.schedule_once(lambda *_: _on_done_ui(), 0))
 
     def _seed_quizzes_background(self) -> None:
         """Заполняем тесты в фоне"""

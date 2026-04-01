@@ -2,7 +2,7 @@
 title = Molecule Mentor
 package.name = moleculementor
 package.domain = org.moleculementor
-version = 0.2.1
+version = 0.2.2
 
 source.dir = .
 ; ONLINE-ONLY версия: только онлайн ИИ, без оффлайн-модели и без экрана скачивания
